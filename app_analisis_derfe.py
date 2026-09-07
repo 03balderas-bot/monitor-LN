@@ -669,22 +669,35 @@ with tab_movilidad:
                 sinonimos = SINONIMOS_ORIGEN.get(cve_ent_num, (nom_ent_str,))
                 sinonimos_sql = ", ".join([f"'{s}'" for s in sinonimos])
 
-                q_nac = f"""
+                # CONSULTA INTEGRAL EN DERFE_ORIGEN: Identifica Nativos, Foráneos, Clave 87 y Clave 88
+                q_origen_completo = f"""
                     SELECT 
                         CASE 
-                            WHEN UPPER(TRIM(entidad_origen)) IN ({sinonimos_sql}) THEN 'NATIVOS' 
-                            ELSE 'FORANEOS' 
-                        END AS tipo,
-                        SUM(COALESCE(padron_electoral, 0)) AS pe
+                            WHEN UPPER(TRIM(entidad_origen)) IN ('87', 'HIJOS DE MEXICANOS NACIDOS EN EL EXTRANJERO', 'NACIDOS EN EL EXTRANJERO') THEN 'CLAVE_87'
+                            WHEN UPPER(TRIM(entidad_origen)) IN ('88', 'NATURALIZADOS', 'MEXICANOS POR NATURALIZACION') THEN 'CLAVE_88'
+                            WHEN UPPER(TRIM(entidad_origen)) IN ({sinonimos_sql}) THEN 'NATIVOS'
+                            ELSE 'FORANEOS'
+                        END AS clasificacion,
+                        SUM(COALESCE(padron_electoral, 0)) AS pe,
+                        SUM(COALESCE(lista_nominal, 0)) AS ln
                     FROM derfe_origen
                     WHERE corte = '{corte_usar}' 
                       AND CAST(clave_entidad_residencia AS INT) = {cve_ent_num}
                       AND ambito = 'NACIONAL'
-                    GROUP BY tipo
+                    GROUP BY clasificacion
                 """
-                df_nac = pd.read_sql_query(q_nac, conn)
-                pe_nat = int(df_nac[df_nac['tipo'] == 'NATIVOS']['pe'].sum()) if not df_nac.empty else 0
-                pe_foran = int(df_nac[df_nac['tipo'] == 'FORANEOS']['pe'].sum()) if not df_nac.empty else 0
+                df_clasif = pd.read_sql_query(q_origen_completo, conn)
+
+                def obtener_val(clasif, col):
+                    sub = df_clasif[df_clasif['clasificacion'] == clasif]
+                    return int(sub[col].iloc[0]) if not sub.empty else 0
+
+                pe_nat = obtener_val('NATIVOS', 'pe')
+                pe_foran = obtener_val('FORANEOS', 'pe')
+                pe_87 = obtener_val('CLAVE_87', 'pe')
+                pe_88 = obtener_val('CLAVE_88', 'pe')
+                ln_87 = obtener_val('CLAVE_87', 'ln')
+                ln_88 = obtener_val('CLAVE_88', 'ln')
 
                 q_ext = f"""
                     SELECT SUM(COALESCE(padron_electoral, 0)) AS pe_ext
@@ -695,38 +708,6 @@ with tab_movilidad:
                 """
                 row_ext = conn.execute(q_ext).fetchone()
                 pe_ext = int(row_ext[0] or 0) if (row_ext and row_ext[0] is not None) else 0
-
-                # EXTRACCIÓN CORRECTA: Obtenemos los valores de las claves 87 y 88 sumando directamente 
-                # los campos de rangos de edad desde la tabla derfe_edad (respetando si hay distrito seleccionado)
-                if distrito_seleccionado is not None:
-                    q_edad_especial = f"""
-                        SELECT 
-                            SUM(COALESCE(padron_87, 0)) AS pe_87, 
-                            SUM(COALESCE(padron_88, 0)) AS pe_88, 
-                            SUM(COALESCE(lista_87, 0)) AS ln_87, 
-                            SUM(COALESCE(lista_88, 0)) AS ln_88 
-                        FROM derfe_edad 
-                        WHERE TRIM(CAST(corte AS TEXT)) = '{corte_reciente}' 
-                          AND CAST(clave_entidad AS INT) = {cve_ent_num} 
-                          AND CAST(distrito AS INT) = {distrito_seleccionado}
-                    """
-                else:
-                    q_edad_especial = f"""
-                        SELECT 
-                            SUM(COALESCE(padron_87, 0)) AS pe_87, 
-                            SUM(COALESCE(padron_88, 0)) AS pe_88, 
-                            SUM(COALESCE(lista_87, 0)) AS ln_87, 
-                            SUM(COALESCE(lista_88, 0)) AS ln_88 
-                        FROM derfe_edad 
-                        WHERE TRIM(CAST(corte AS TEXT)) = '{corte_reciente}' 
-                          AND CAST(clave_entidad AS INT) = {cve_ent_num}
-                    """
-
-                df_esp_edad = pd.read_sql_query(q_edad_especial, conn)
-                pe_87 = int(df_esp_edad['pe_87'].iloc[0] or 0) if not df_esp_edad.empty else 0
-                pe_88 = int(df_esp_edad['pe_88'].iloc[0] or 0) if not df_esp_edad.empty else 0
-                ln_87 = int(df_esp_edad['ln_87'].iloc[0] or 0) if not df_esp_edad.empty else 0
-                ln_88 = int(df_esp_edad['ln_88'].iloc[0] or 0) if not df_esp_edad.empty else 0
 
                 pe_tot_local = pe_nat + pe_foran + pe_87 + pe_88
                 pct_nat = (pe_nat / pe_tot_local * 100) if pe_tot_local > 0 else 0
@@ -802,6 +783,8 @@ with tab_movilidad:
                 q_nac_alt = f"""
                     SELECT 
                         CASE 
+                            WHEN UPPER(TRIM(entidad_origen)) IN ('87', 'HIJOS DE MEXICANOS NACIDOS EN EL EXTRANJERO', 'NACIDOS EN EL EXTRANJERO') THEN 'CLAVE_87'
+                            WHEN UPPER(TRIM(entidad_origen)) IN ('88', 'NATURALIZADOS', 'MEXICANOS POR NATURALIZACION') THEN 'CLAVE_88'
                             WHEN (
                                 UPPER(TRIM(entidad_origen)) = UPPER(TRIM(entidad_residencia))
                                 OR (UPPER(TRIM(entidad_origen)) IN ('CIUDAD DE MEXICO', 'DISTRITO FEDERAL', 'DF', 'CDMX') AND UPPER(TRIM(entidad_residencia)) IN ('CIUDAD DE MEXICO', 'DISTRITO FEDERAL', 'DF', 'CDMX'))
@@ -809,14 +792,24 @@ with tab_movilidad:
                             ) THEN 'NATIVOS'
                             ELSE 'FORANEOS'
                         END AS tipo,
-                        SUM(COALESCE(padron_electoral, 0)) AS pe
+                        SUM(COALESCE(padron_electoral, 0)) AS pe,
+                        SUM(COALESCE(lista_nominal, 0)) AS ln
                     FROM derfe_origen
                     WHERE corte = '{corte_usar}' AND ambito = 'NACIONAL'
                     GROUP BY tipo
                 """
                 df_nac_alt = pd.read_sql_query(q_nac_alt, conn)
-                pe_nat_nac = int(df_nac_alt[df_nac_alt['tipo'] == 'NATIVOS']['pe'].sum()) if not df_nac_alt.empty else 0
-                pe_foran_nac = int(df_nac_alt[df_nac_alt['tipo'] == 'FORANEOS']['pe'].sum()) if not df_nac_alt.empty else 0
+
+                def val_nac(t, col):
+                    sub = df_nac_alt[df_nac_alt['tipo'] == t]
+                    return int(sub[col].iloc[0]) if not sub.empty else 0
+
+                pe_nat_nac = val_nac('NATIVOS', 'pe')
+                pe_foran_nac = val_nac('FORANEOS', 'pe')
+                pe_87_nac = val_nac('CLAVE_87', 'pe')
+                pe_88_nac = val_nac('CLAVE_88', 'pe')
+                ln_87_nac = val_nac('CLAVE_87', 'ln')
+                ln_88_nac = val_nac('CLAVE_88', 'ln')
 
                 q_ext_nac = f"""
                     SELECT SUM(COALESCE(padron_electoral, 0)) AS pe_ext
@@ -825,21 +818,6 @@ with tab_movilidad:
                 """
                 row_ext_nac = conn.execute(q_ext_nac).fetchone()
                 pe_ext_nac = int(row_ext_nac[0] or 0) if (row_ext_nac and row_ext_nac[0] is not None) else 0
-
-                q_esp_nac = f"""
-                    SELECT 
-                        SUM(COALESCE(padron_87, 0)) AS pe_87, 
-                        SUM(COALESCE(padron_88, 0)) AS pe_88, 
-                        SUM(COALESCE(lista_87, 0)) AS ln_87, 
-                        SUM(COALESCE(lista_88, 0)) AS ln_88 
-                    FROM derfe_edad 
-                    WHERE TRIM(CAST(corte AS TEXT)) = '{corte_reciente}'
-                """
-                df_esp_n = pd.read_sql_query(q_esp_nac, conn)
-                pe_87_nac = int(df_esp_n['pe_87'].iloc[0] or 0) if not df_esp_n.empty else 0
-                pe_88_nac = int(df_esp_n['pe_88'].iloc[0] or 0) if not df_esp_n.empty else 0
-                ln_87_nac = int(df_esp_n['ln_87'].iloc[0] or 0) if not df_esp_n.empty else 0
-                ln_88_nac = int(df_esp_n['ln_88'].iloc[0] or 0) if not df_esp_n.empty else 0
 
                 pe_tot_pais = pe_nat_nac + pe_foran_nac + pe_87_nac + pe_88_nac
                 pct_nat_nac = (pe_nat_nac / pe_tot_pais * 100) if pe_tot_pais > 0 else 0
@@ -880,13 +858,16 @@ with tab_movilidad:
 
                 with col_gn2:
                     q_ranking_esp = f"""
-                        SELECT clave_entidad, SUM(COALESCE(padron_87, 0)) as pe_87, SUM(COALESCE(padron_88, 0)) as pe_88 
-                        FROM derfe_edad 
-                        WHERE TRIM(CAST(corte AS TEXT)) = '{corte_reciente}' 
-                        GROUP BY clave_entidad
+                        SELECT 
+                            clave_entidad_residencia,
+                            SUM(CASE WHEN UPPER(TRIM(entidad_origen)) IN ('87', 'HIJOS DE MEXICANOS NACIDOS EN EL EXTRANJERO', 'NACIDOS EN EL EXTRANJERO') THEN padron_electoral ELSE 0 END) AS pe_87,
+                            SUM(CASE WHEN UPPER(TRIM(entidad_origen)) IN ('88', 'NATURALIZADOS', 'MEXICANOS POR NATURALIZACION') THEN padron_electoral ELSE 0 END) AS pe_88
+                        FROM derfe_origen
+                        WHERE corte = '{corte_usar}' AND ambito = 'NACIONAL'
+                        GROUP BY clave_entidad_residencia
                     """
                     df_esp_rank = pd.read_sql_query(q_ranking_esp, conn)
-                    df_esp_rank['Entidad'] = df_esp_rank['clave_entidad'].astype(int).map(CATALOGO_ENTIDADES)
+                    df_esp_rank['Entidad'] = df_esp_rank['clave_entidad_residencia'].astype(int).map(CATALOGO_ENTIDADES)
                     df_esp_rank['Total Especial'] = df_esp_rank['pe_87'] + df_esp_rank['pe_88']
                     df_esp_rank = df_esp_rank.sort_values(by="Total Especial", ascending=False).head(8)
 
