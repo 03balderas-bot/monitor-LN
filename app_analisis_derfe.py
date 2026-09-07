@@ -18,7 +18,7 @@ st.set_page_config(
 # TÍTULO VISIBLE Y VOCALÍA INSTITUCIONAL
 # ==============================================================================
 st.title("Análisis de Instrumentos registrales")
-st.subheader("Vocalía del Registro Federal de Electores_Oaxaca")
+st.subheader("Vocalía del Registro Federal de Electores Oaxaca")
 
 # ==============================================================================
 # CRÉDITO DE LA FUENTE DE DATOS EN LA BARRA LATERAL
@@ -29,8 +29,6 @@ st.sidebar.markdown(
     "Datos recopilados de los [Datos Abiertos del Padrón Electoral - INE](https://ine.mx/transparencia/datos-abiertos/#/tematica/padron-electoral)."
 )
 st.sidebar.markdown("---")
-
-# [A partir de aquí continúa el resto de tu código de lectura de base de datos, filtros y gráficas...]
 
 st.markdown("""
 <style>
@@ -218,6 +216,7 @@ with st.sidebar:
     )
     
     claves_filtro = []
+    distrito_seleccionado = None
     subfiltro_entidad = "Total Entidad (Territorio + Extranjero)"
     entidad_nombre_header = "Total País (Nacional + Extranjero)"
 
@@ -228,16 +227,32 @@ with st.sidebar:
         claves_filtro = [cve]
         nom_ent_base = CATALOGO_ENTIDADES.get(cve, "Entidad")
 
-        subfiltro_entidad = st.radio(
-            f"Desglose para {nom_ent_base}:",
-            [
-                "Total Entidad (Territorio + Extranjero)",
-                "Solo Territorio Estatal (Sin Distrito 0)",
-                "Solo Extranjero (Distrito 0)"
-            ],
-            index=0
-        )
-        entidad_nombre_header = f"{nom_ent_base} [{subfiltro_entidad}]"
+        # NUEVO: Selector de Distrito Electoral Jerárquico
+        try:
+            query_distritos = f"SELECT DISTINCT distrito FROM derfe_sexo WHERE clave_entidad = {cve} AND distrito IS NOT NULL ORDER BY CAST(distrito AS INT)"
+            df_distritos = pd.read_sql_query(query_distritos, conn)
+            if not df_distritos.empty:
+                lista_distritos = ["Todos los Distritos"] + [str(d) for d in df_distritos['distrito'].tolist()]
+                distrito_elegido = st.selectbox("Selecciona Distrito Electoral:", lista_distritos)
+                if distrito_elegido != "Todos los Distritos":
+                    distrito_seleccionado = int(distrito_elegido)
+        except Exception:
+            pass
+
+        if distrito_seleccionado is not None:
+            subfiltro_entidad = f"Distrito Federal {distrito_seleccionado}"
+            entidad_nombre_header = f"{nom_ent_base} [Distrito {distrito_seleccionado}]"
+        else:
+            subfiltro_entidad = st.radio(
+                f"Desglose para {nom_ent_base}:",
+                [
+                    "Total Entidad (Territorio + Extranjero)",
+                    "Solo Territorio Estatal (Sin Distrito 0)",
+                    "Solo Extranjero (Distrito 0)"
+                ],
+                index=0
+            )
+            entidad_nombre_header = f"{nom_ent_base} [{subfiltro_entidad}]"
 
     elif alcance == "Total del Padrón (Nacional + Ext)":
         entidad_nombre_header = "Total del Padrón (Nacional + Extranjero)"
@@ -251,14 +266,16 @@ with st.sidebar:
 # ==============================================================================
 st.markdown(f"<div class='main-title'>Padrón Electoral y Lista Nominal: {entidad_nombre_header}</div>", unsafe_allow_html=True)
 if modo == "Comparar con Periodo Previo" and corte_base:
-    st.markdown(f"<div class='sub-title'>Evolución histórica: <b>{formatear_corte(corte_reciente)}</b> frente a <b>{formatear_corte(corte_base)}</b></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='sub-title'>Evolución histórica: <b>{formatear_corte(corte_reciente)}</b> frente al corte base seleccionado</div>", unsafe_allow_html=True)
 else:
     st.markdown(f"<div class='sub-title'>Corte de operación: <b>{formatear_corte(corte_reciente)}</b></div>", unsafe_allow_html=True)
 
-# FILTRADO SQL HOMOGÉNEO
+# FILTRADO SQL HOMOGÉNEO (Incluyendo soporte para distrito específico)
 if alcance == "Entidad Específica":
     cve_ent = claves_filtro[0]
-    if subfiltro_entidad == "Solo Territorio Estatal (Sin Distrito 0)":
+    if distrito_seleccionado is not None:
+        cond_filtro = f"AND CAST(clave_entidad AS INT) = {cve_ent} AND CAST(distrito AS INT) = {distrito_seleccionado}"
+    elif subfiltro_entidad == "Solo Territorio Estatal (Sin Distrito 0)":
         cond_filtro = f"AND CAST(clave_entidad AS INT) = {cve_ent} AND CAST(distrito AS INT) > 0"
     elif subfiltro_entidad == "Solo Extranjero (Distrito 0)":
         cond_filtro = f"AND CAST(clave_entidad AS INT) = {cve_ent} AND CAST(distrito AS INT) = 0"
@@ -338,7 +355,7 @@ st.write("")
 col_izq, col_der = st.columns([3, 2])
 
 with col_izq:
-    if alcance == "Entidad Específica":
+    if alcance == "Entidad Específica" and distrito_seleccionado is None:
         q_dist = f"""
             SELECT 
                 CASE WHEN CAST(distrito AS INT) = 0 THEN 'Extranjero' ELSE 'Dto ' || CAST(distrito AS TEXT) END AS 'Distrito Federal',
@@ -352,6 +369,21 @@ with col_izq:
             df_dist, x="Distrito Federal", y=["Padrón", "Lista"],
             barmode="group",
             title=f"Distribución Distrital ({entidad_nombre_header})",
+            color_discrete_sequence=["#1f77b4", "#2ca02c"]
+        )
+    elif alcance == "Entidad Específica" and distrito_seleccionado is not None:
+        q_dist_esp = f"""
+            SELECT 
+                'Distrito ' || CAST(distrito AS TEXT) AS 'Distrito Federal',
+                padron_electoral AS Padrón, lista_nominal AS Lista
+            FROM derfe_sexo
+            WHERE TRIM(CAST(corte AS TEXT)) = '{corte_reciente}' {cond_filtro}
+        """
+        df_dist_esp = pd.read_sql_query(q_dist_esp, conn)
+        fig_principal = px.bar(
+            df_dist_esp, x="Distrito Federal", y=["Padrón", "Lista"],
+            barmode="group",
+            title=f"Detalle del {entidad_nombre_header}",
             color_discrete_sequence=["#1f77b4", "#2ca02c"]
         )
     elif "Extranjero" in alcance:
@@ -928,7 +960,7 @@ with tab_movilidad:
 # SECCIÓN 4: DETALLE TABULAR
 # ==============================================================================
 with st.expander("📋 Ver Tabla Detallada de Datos y Exportar"):
-    if alcance == "Entidad Específica":
+    if alcance == "Entidad Específica" and distrito_seleccionado is None:
         q_tab = f"""
             SELECT 
                 CASE WHEN CAST(distrito AS INT) = 0 THEN 'Extranjero' ELSE 'Distrito ' || CAST(distrito AS TEXT) END AS 'Distrito Federal',
@@ -938,6 +970,16 @@ with st.expander("📋 Ver Tabla Detallada de Datos y Exportar"):
             FROM derfe_sexo
             WHERE TRIM(CAST(corte AS TEXT)) = '{corte_reciente}' {cond_filtro}
             ORDER BY CAST(distrito AS INT)
+        """
+    elif alcance == "Entidad Específica" and distrito_seleccionado is not None:
+        q_tab = f"""
+            SELECT 
+                'Distrito ' || CAST(distrito AS TEXT) AS 'Distrito Federal',
+                padron_electoral AS 'Padrón Electoral', lista_nominal AS 'Lista Nominal',
+                hombres_padron AS 'Hombres', mujeres_padron AS 'Mujeres',
+                ROUND(lista_nominal*100.0/padron_electoral, 2) AS 'Cobertura (%)'
+            FROM derfe_sexo
+            WHERE TRIM(CAST(corte AS TEXT)) = '{corte_reciente}' {cond_filtro}
         """
     elif "Extranjero" in alcance:
         q_tab = f"""
