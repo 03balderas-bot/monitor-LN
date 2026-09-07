@@ -142,7 +142,7 @@ def extraer_clave(opcion_str: str) -> int:
     return int(opcion_str.split(" - ")[0])
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def cargar_especiales_87_88(corte_solicitado: str, cve_entidad: int = None, distrito_sel: int = None):
+def cargar_especiales_87_88(corte_solicitado: str):
     try:
         q_chk = f"SELECT DISTINCT corte FROM derfe_especiales WHERE corte = '{corte_solicitado}'"
         r = conn.execute(q_chk).fetchone()
@@ -153,19 +153,15 @@ def cargar_especiales_87_88(corte_solicitado: str, cve_entidad: int = None, dist
             r_max = conn.execute(q_max).fetchone()
             c_usar = r_max[0] if r_max else conn.execute("SELECT MAX(corte) FROM derfe_especiales").fetchone()[0]
 
-        if distrito_sel is not None and cve_entidad is not None:
-            q = f"SELECT clave_entidad, distrito, pe_87, pe_88, ln_87, ln_88 FROM derfe_especiales WHERE corte = '{c_usar}' AND CAST(clave_entidad AS INT) = {cve_entidad} AND CAST(distrito AS INT) = {distrito_sel}"
-        elif cve_entidad is not None:
-            q = f"SELECT clave_entidad, distrito, pe_87, pe_88, ln_87, ln_88 FROM derfe_especiales WHERE corte = '{c_usar}' AND CAST(clave_entidad AS INT) = {cve_entidad}"
-        else:
-            q = f"SELECT clave_entidad, distrito, pe_87, pe_88, ln_87, ln_88 FROM derfe_especiales WHERE corte = '{c_usar}'"
-
+        q = f"SELECT clave_entidad, distrito, pe_87, pe_88, ln_87, ln_88 FROM derfe_especiales WHERE corte = '{c_usar}'"
         df_esp = pd.read_sql_query(q, conn)
 
         res = {}
         for _, row in df_esp.iterrows():
             cve = int(row['clave_entidad'])
-            res[cve] = {
+            dto = int(row['distrito'])
+            # Almacenamos usando una tupla (entidad, distrito) como clave exacta
+            res[(cve, dto)] = {
                 "pe_87": int(row['pe_87']),
                 "pe_88": int(row['pe_88']),
                 "ln_87": int(row['ln_87']),
@@ -702,17 +698,15 @@ with tab_movilidad:
             corte_usar = row_max[0] if row_max else None
 
         if corte_usar:
-            # CORRECCIÓN: Se pasan la entidad y el distrito actual para filtrar claves 87 y 88 correctamente por distrito
+            esp_dict = cargar_especiales_87_88(str(corte_usar))
             cve_ent_num = claves_filtro[0] if (alcance == "Entidad Específica" and claves_filtro) else None
-            esp_dict = cargar_especiales_87_88(str(corte_usar), cve_entidad=cve_ent_num, distrito_sel=distrito_seleccionado)
 
-            if alcance == "Entidad Específica" and claves_filtro and claves_filtro[0] > 0:
+            if alcance == "Entidad Específica" and cve_ent_num is not None:
                 nom_ent_str = CATALOGO_ENTIDADES[cve_ent_num]
 
                 sinonimos = SINONIMOS_ORIGEN.get(cve_ent_num, (nom_ent_str,))
                 sinonimos_sql = ", ".join([f"'{s}'" for s in sinonimos])
 
-                # Si hay distrito seleccionado, filtramos movilidad y origen también por distrito
                 cond_mov_dist = f"AND CAST(distrito AS INT) = {distrito_seleccionado}" if distrito_seleccionado is not None else ""
 
                 q_nac = f"""
@@ -743,21 +737,22 @@ with tab_movilidad:
                 row_ext = conn.execute(q_ext).fetchone()
                 pe_ext = int(row_ext[0] or 0) if (row_ext and row_ext[0] is not None) else 0
 
-                # Obtención de claves 87 y 88 (ya filtradas por entidad y distrito si aplica)
+                # EXTRACCIÓN DINÁMICA DE CLAVES 87 Y 88 (Soporta distrito o suma toda la entidad)
+                pe_87, pe_88, ln_87, ln_88 = 0, 0, 0, 0
                 if distrito_seleccionado is not None:
-                    datos_ent_esp = esp_dict.get(cve_ent_num, {"pe_87": 0, "pe_88": 0, "ln_87": 0, "ln_88": 0})
+                    match_key = (cve_ent_num, distrito_seleccionado)
+                    if match_key in esp_dict:
+                        pe_87 = esp_dict[match_key]["pe_87"]
+                        pe_88 = esp_dict[match_key]["pe_88"]
+                        ln_87 = esp_dict[match_key]["ln_87"]
+                        ln_88 = esp_dict[match_key]["ln_88"]
                 else:
-                    # Si es toda la entidad, sumamos de todos los distritos de esa entidad en el diccionario
-                    pe_87_acc, pe_88_acc, ln_87_acc, ln_88_acc = 0, 0, 0, 0
-                    for k_key, d_val in esp_dict.items():
-                        if isinstance(k_key, int) and k_key == cve_ent_num:
-                            pass # O si tu estructura agrupa por entidad completa:
-                    datos_ent_esp = esp_dict.get(cve_ent_num, {"pe_87": 0, "pe_88": 0, "ln_87": 0, "ln_88": 0})
-
-                pe_87 = datos_ent_esp["pe_87"]
-                pe_88 = datos_ent_esp["pe_88"]
-                ln_87 = datos_ent_esp["ln_87"]
-                ln_88 = datos_ent_esp["ln_88"]
+                    for (e_cve, d_dto), vals in esp_dict.items():
+                        if isinstance(e_cve, int) and e_cve == cve_ent_num:
+                            pe_87 += vals["pe_87"]
+                            pe_88 += vals["pe_88"]
+                            ln_87 += vals["ln_87"]
+                            ln_88 += vals["ln_88"]
 
                 pe_tot_local = pe_nat + pe_foran + pe_87 + pe_88
                 pct_nat = (pe_nat / pe_tot_local * 100) if pe_tot_local > 0 else 0
@@ -901,16 +896,24 @@ with tab_movilidad:
                     st.plotly_chart(fig_pie_nac, use_container_width=True, config=PLOTLY_CONFIG)
 
                 with col_gn2:
+                    # Agrupar especiales por entidad para el ranking nacional
+                    ent_agregadas = {}
+                    for (e_cve, d_dto), vals in esp_dict.items():
+                        if isinstance(e_cve, int):
+                            if e_cve not in ent_agregadas:
+                                ent_agregadas[e_cve] = {"pe_87": 0, "pe_88": 0}
+                            ent_agregadas[e_cve]["pe_87"] += vals["pe_87"]
+                            ent_agregadas[e_cve]["pe_88"] += vals["pe_88"]
+
                     lista_esp = []
-                    for k_cve, d_val in esp_dict.items():
-                        if isinstance(k_cve, int):
-                            tot_esp = d_val["pe_87"] + d_val["pe_88"]
-                            lista_esp.append({
-                                "Entidad": CATALOGO_ENTIDADES.get(k_cve, f"Ent {k_cve}"),
-                                "Hijos en Ext. (87)": d_val["pe_87"],
-                                "Naturalizados (88)": d_val["pe_88"],
-                                "Total Especial": tot_esp
-                            })
+                    for k_cve, d_val in ent_agregadas.items():
+                        tot_esp = d_val["pe_87"] + d_val["pe_88"]
+                        lista_esp.append({
+                            "Entidad": CATALOGO_ENTIDADES.get(k_cve, f"Ent {k_cve}"),
+                            "Hijos en Ext. (87)": d_val["pe_87"],
+                            "Naturalizados (88)": d_val["pe_88"],
+                            "Total Especial": tot_esp
+                        })
                     df_esp_rank = pd.DataFrame(lista_esp).sort_values(by="Total Especial", ascending=False).head(8)
 
                     fig_bar_esp = px.bar(
