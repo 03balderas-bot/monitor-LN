@@ -507,7 +507,7 @@ tab_jovenes, tab_mayores, tab_movilidad = st.tabs([
 ])
 
 with tab_jovenes:
-    col_j1, col_j2 = st.columns([2, 3])  # <--- COLUMNAS AMPLIADAS PARA EVITAR RECORTE
+    col_j1, col_j2 = st.columns([3, 2])  # <--- [3, 2]: Más espacio para métricas (izq), gráfica compacta (der)
     with col_j1:
         if modo == "Comparar con Periodo Previo" and corte_base:
             q_edad2 = f"""
@@ -587,8 +587,8 @@ with tab_jovenes:
                 hovertemplate="<b>%{y}</b><br>Proporción: %{x:.2f}%<extra></extra>"
             )
             fig_top_j.update_layout(
-                margin=dict(l=20, r=20, t=40, b=20),
-                height=280,
+                margin=dict(l=5, r=5, t=30, b=10),
+                height=250,
                 xaxis=dict(showticklabels=False, title="")
             )
             st.plotly_chart(fig_top_j, use_container_width=True, config=PLOTLY_CONFIG)
@@ -596,7 +596,7 @@ with tab_jovenes:
             st.caption(f"No fue posible graficar el Top 5: {err}")
 
 with tab_mayores:
-    col_m1, col_m2 = st.columns([2, 3])  # <--- COLUMNAS AMPLIADAS PARA EVITAR RECORTE
+    col_m1, col_m2 = st.columns([3, 2])  # <--- [3, 2]: Más espacio para métricas (izq), gráfica compacta (der)
     with col_m1:
         if modo == "Comparar con Periodo Previo" and corte_base:
             q_edad65_2 = f"""
@@ -676,8 +676,8 @@ with tab_mayores:
                 hovertemplate="<b>%{y}</b><br>Proporción: %{x:.2f}%<extra></extra>"
             )
             fig_top_65.update_layout(
-                margin=dict(l=20, r=20, t=40, b=20),
-                height=280,
+                margin=dict(l=5, r=5, t=30, b=10),
+                height=250,
                 xaxis=dict(showticklabels=False, title="")
             )
             st.plotly_chart(fig_top_65, use_container_width=True, config=PLOTLY_CONFIG)
