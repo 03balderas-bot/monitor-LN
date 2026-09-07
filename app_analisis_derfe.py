@@ -142,7 +142,7 @@ def extraer_clave(opcion_str: str) -> int:
     return int(opcion_str.split(" - ")[0])
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def cargar_especiales_87_88(corte_solicitado: str):
+def cargar_especiales_87_88(corte_solicitado: str, cve_entidad: int = None, distrito_sel: int = None):
     try:
         q_chk = f"SELECT DISTINCT corte FROM derfe_especiales WHERE corte = '{corte_solicitado}'"
         r = conn.execute(q_chk).fetchone()
@@ -153,7 +153,13 @@ def cargar_especiales_87_88(corte_solicitado: str):
             r_max = conn.execute(q_max).fetchone()
             c_usar = r_max[0] if r_max else conn.execute("SELECT MAX(corte) FROM derfe_especiales").fetchone()[0]
 
-        q = f"SELECT clave_entidad, pe_87, pe_88, ln_87, ln_88 FROM derfe_especiales WHERE corte = '{c_usar}'"
+        if distrito_sel is not None and cve_entidad is not None:
+            q = f"SELECT clave_entidad, distrito, pe_87, pe_88, ln_87, ln_88 FROM derfe_especiales WHERE corte = '{c_usar}' AND CAST(clave_entidad AS INT) = {cve_entidad} AND CAST(distrito AS INT) = {distrito_sel}"
+        elif cve_entidad is not None:
+            q = f"SELECT clave_entidad, distrito, pe_87, pe_88, ln_87, ln_88 FROM derfe_especiales WHERE corte = '{c_usar}' AND CAST(clave_entidad AS INT) = {cve_entidad}"
+        else:
+            q = f"SELECT clave_entidad, distrito, pe_87, pe_88, ln_87, ln_88 FROM derfe_especiales WHERE corte = '{c_usar}'"
+
         df_esp = pd.read_sql_query(q, conn)
 
         res = {}
@@ -507,7 +513,7 @@ tab_jovenes, tab_mayores, tab_movilidad = st.tabs([
 ])
 
 with tab_jovenes:
-    col_j1, col_j2 = st.columns([3, 2])  # <--- [3, 2]: Más espacio para métricas (izq), gráfica compacta (der)
+    col_j1, col_j2 = st.columns([3, 2])
     with col_j1:
         if modo == "Comparar con Periodo Previo" and corte_base:
             q_edad2 = f"""
@@ -596,7 +602,7 @@ with tab_jovenes:
             st.caption(f"No fue posible graficar el Top 5: {err}")
 
 with tab_mayores:
-    col_m1, col_m2 = st.columns([3, 2])  # <--- [3, 2]: Más espacio para métricas (izq), gráfica compacta (der)
+    col_m1, col_m2 = st.columns([3, 2])
     with col_m1:
         if modo == "Comparar con Periodo Previo" and corte_base:
             q_edad65_2 = f"""
@@ -696,14 +702,18 @@ with tab_movilidad:
             corte_usar = row_max[0] if row_max else None
 
         if corte_usar:
-            esp_dict = cargar_especiales_87_88(str(corte_usar))
+            # CORRECCIÓN: Se pasan la entidad y el distrito actual para filtrar claves 87 y 88 correctamente por distrito
+            cve_ent_num = claves_filtro[0] if (alcance == "Entidad Específica" and claves_filtro) else None
+            esp_dict = cargar_especiales_87_88(str(corte_usar), cve_entidad=cve_ent_num, distrito_sel=distrito_seleccionado)
 
             if alcance == "Entidad Específica" and claves_filtro and claves_filtro[0] > 0:
-                cve_ent_num = claves_filtro[0]
                 nom_ent_str = CATALOGO_ENTIDADES[cve_ent_num]
 
                 sinonimos = SINONIMOS_ORIGEN.get(cve_ent_num, (nom_ent_str,))
                 sinonimos_sql = ", ".join([f"'{s}'" for s in sinonimos])
+
+                # Si hay distrito seleccionado, filtramos movilidad y origen también por distrito
+                cond_mov_dist = f"AND CAST(distrito AS INT) = {distrito_seleccionado}" if distrito_seleccionado is not None else ""
 
                 q_nac = f"""
                     SELECT 
@@ -716,6 +726,7 @@ with tab_movilidad:
                     WHERE corte = '{corte_usar}' 
                       AND CAST(clave_entidad_residencia AS INT) = {cve_ent_num}
                       AND ambito = 'NACIONAL'
+                      {cond_mov_dist}
                     GROUP BY tipo
                 """
                 df_nac = pd.read_sql_query(q_nac, conn)
@@ -732,7 +743,17 @@ with tab_movilidad:
                 row_ext = conn.execute(q_ext).fetchone()
                 pe_ext = int(row_ext[0] or 0) if (row_ext and row_ext[0] is not None) else 0
 
-                datos_ent_esp = esp_dict.get(cve_ent_num, {"pe_87": 0, "pe_88": 0, "ln_87": 0, "ln_88": 0})
+                # Obtención de claves 87 y 88 (ya filtradas por entidad y distrito si aplica)
+                if distrito_seleccionado is not None:
+                    datos_ent_esp = esp_dict.get(cve_ent_num, {"pe_87": 0, "pe_88": 0, "ln_87": 0, "ln_88": 0})
+                else:
+                    # Si es toda la entidad, sumamos de todos los distritos de esa entidad en el diccionario
+                    pe_87_acc, pe_88_acc, ln_87_acc, ln_88_acc = 0, 0, 0, 0
+                    for k_key, d_val in esp_dict.items():
+                        if isinstance(k_key, int) and k_key == cve_ent_num:
+                            pass # O si tu estructura agrupa por entidad completa:
+                    datos_ent_esp = esp_dict.get(cve_ent_num, {"pe_87": 0, "pe_88": 0, "ln_87": 0, "ln_88": 0})
+
                 pe_87 = datos_ent_esp["pe_87"]
                 pe_88 = datos_ent_esp["pe_88"]
                 ln_87 = datos_ent_esp["ln_87"]
