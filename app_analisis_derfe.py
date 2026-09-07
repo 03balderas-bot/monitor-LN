@@ -5,7 +5,7 @@ import plotly.express as px
 from pathlib import Path
 
 # ==============================================================================
-# CONFIGURACIÓN DE PÁGINA Y ESTILO RESPONSIVO PARA MÓVILES Y ESCRITORIO
+# CONFIGURACIÓN DE PÁGINA Y ESTILO RESPONSIVO
 # ==============================================================================
 st.set_page_config(
     page_title="Monitor DERFE | INE Oaxaca",
@@ -14,15 +14,9 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# ==============================================================================
-# TÍTULO VISIBLE Y VOCALÍA INSTITUCIONAL
-# ==============================================================================
 st.title("Análisis de Instrumentos registrales")
 st.subheader("Vocalía del Registro Federal de Electores_Oaxaca")
 
-# ==============================================================================
-# CRÉDITO DE LA FUENTE DE DATOS EN LA BARRA LATERAL
-# ==============================================================================
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     "### Fuente de Información\n"
@@ -32,39 +26,15 @@ st.sidebar.markdown("---")
 
 st.markdown("""
 <style>
-    .main-title {
-        font-size: 1.6rem !important;
-        font-weight: 800;
-        margin-bottom: 0.1rem;
-        line-height: 1.2;
-    }
-    .sub-title {
-        color: #8A99AD;
-        font-size: 0.88rem !important;
-        margin-bottom: 1rem;
-    }
-    [data-testid="stMetricValue"] {
-        font-size: 1.25rem !important;
-        font-weight: 700;
-    }
-    [data-testid="stMetricLabel"] {
-        font-size: 0.78rem !important;
-        white-space: normal !important;
-    }
-    [data-testid="stMetricDelta"] {
-        font-size: 0.75rem !important;
-    }
+    .main-title { font-size: 1.6rem !important; font-weight: 800; margin-bottom: 0.1rem; line-height: 1.2; }
+    .sub-title { color: #8A99AD; font-size: 0.88rem !important; margin-bottom: 1rem; }
+    [data-testid="stMetricValue"] { font-size: 1.25rem !important; font-weight: 700; }
+    [data-testid="stMetricLabel"] { font-size: 0.78rem !important; white-space: normal !important; }
+    [data-testid="stMetricDelta"] { font-size: 0.75rem !important; }
     @media (max-width: 768px) {
-        .main-title {
-            font-size: 1.3rem !important;
-        }
-        [data-testid="stMetricValue"] {
-            font-size: 1.05rem !important;
-        }
-        [data-testid="column"] {
-            min-width: 45% !important;
-            margin-bottom: 0.5rem;
-        }
+        .main-title { font-size: 1.3rem !important; }
+        [data-testid="stMetricValue"] { font-size: 1.05rem !important; }
+        [data-testid="column"] { min-width: 45% !important; margin-bottom: 0.5rem; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -95,15 +65,8 @@ SINONIMOS_ORIGEN = {
 
 OPCIONES_ENTIDADES = [f"{k:02d} - {v}" for k, v in CATALOGO_ENTIDADES.items() if k > 0]
 
-PLOTLY_CONFIG = {
-    "displayModeBar": False,
-    "responsive": True,
-    "scrollZoom": False
-}
+PLOTLY_CONFIG = { "displayModeBar": False, "responsive": True, "scrollZoom": False }
 
-# ==============================================================================
-# CONEXIÓN Y CONSULTAS EN CACHÉ ULTRARRÁPIDAS
-# ==============================================================================
 @st.cache_resource
 def get_conn():
     return sqlite3.connect(str(DB_PATH), check_same_thread=False)
@@ -229,16 +192,12 @@ with st.sidebar:
     elif alcance == "Extranjero (Solo Distrito 0 del País)":
         entidad_nombre_header = "Residentes en el Extranjero (Distritos 0 Nacionales)"
 
-# ==============================================================================
-# ENCABEZADO PRINCIPAL
-# ==============================================================================
 st.markdown(f"<div class='main-title'>Padrón Electoral y Lista Nominal: {entidad_nombre_header}</div>", unsafe_allow_html=True)
 if modo == "Comparar con Periodo Previo" and corte_base:
     st.markdown(f"<div class='sub-title'>Evolución histórica: <b>{formatear_corte(corte_reciente)}</b> frente al corte base seleccionado</div>", unsafe_allow_html=True)
 else:
     st.markdown(f"<div class='sub-title'>Corte de operación: <b>{formatear_corte(corte_reciente)}</b></div>", unsafe_allow_html=True)
 
-# FILTRADO SQL HOMOGÉNEO
 if alcance == "Entidad Específica":
     cve_ent = claves_filtro[0]
     if distrito_seleccionado is not None:
@@ -257,7 +216,7 @@ elif alcance == "Extranjero (Solo Distrito 0 del País)":
     cond_filtro = "AND CAST(clave_entidad AS INT) BETWEEN 1 AND 32 AND CAST(distrito AS INT) = 0"
 
 # ==============================================================================
-# SECCIÓN 1: KPIS Y COMPARATIVA PRINCIPAL (SEXO Y TOTALES)
+# SECCIÓN 1: KPIS Y COMPARATIVA PRINCIPAL
 # ==============================================================================
 q_c1 = f"""
     SELECT 
@@ -318,7 +277,7 @@ else:
 st.write("")
 
 # ==============================================================================
-# SECCIÓN 2: GRÁFICOS VISUALES
+# SECCIÓN 2: GRÁFICOS
 # ==============================================================================
 col_izq, col_der = st.columns([3, 2])
 
@@ -409,9 +368,7 @@ with col_izq:
             color_discrete_sequence=["#1f77b4", "#2ca02c"]
         )
     
-    fig_principal.update_traces(
-        hovertemplate="<b>%{x}</b><br>%{data.name}: %{y:,.0f}<extra></extra>"
-    )
+    fig_principal.update_traces(hovertemplate="<b>%{x}</b><br>%{data.name}: %{y:,.0f}<extra></extra>")
     fig_principal.update_layout(
         margin=dict(l=15, r=15, t=40, b=20),
         legend_title_text="",
@@ -437,7 +394,7 @@ with col_der:
     st.plotly_chart(fig_genero, use_container_width=True, config=PLOTLY_CONFIG)
 
 # ==============================================================================
-# SECCIÓN 3: CONTEXTO DEMOGRÁFICO POR GRUPOS CLAVE (18-19 Y 65 Y MÁS)
+# SECCIÓN 3: CONTEXTO DEMOGRÁFICO POR GRUPOS CLAVE
 # ==============================================================================
 st.markdown("### Contexto Demográfico y Grupos de Edad Clave")
 
@@ -546,16 +503,8 @@ with tab_jovenes:
                 labels={"pct_local": "% de la LN Estatal", "Entidad": ""},
                 color_discrete_sequence=["#1f77b4"]
             )
-            fig_top_j.update_traces(
-                textposition='inside', 
-                insidetextanchor='middle',
-                hovertemplate="<b>%{y}</b><br>Proporción: %{x:.2f}%<extra></extra>"
-            )
-            fig_top_j.update_layout(
-                margin=dict(l=5, r=5, t=30, b=10),
-                height=250,
-                xaxis=dict(showticklabels=False, title="")
-            )
+            fig_top_j.update_traces(textposition='inside', insidetextanchor='middle')
+            fig_top_j.update_layout(margin=dict(l=5, r=5, t=30, b=10), height=250, xaxis=dict(showticklabels=False, title=""))
             st.plotly_chart(fig_top_j, use_container_width=True, config=PLOTLY_CONFIG)
         except Exception as err:
             st.caption(f"No fue posible graficar el Top 5: {err}")
@@ -635,20 +584,15 @@ with tab_mayores:
                 labels={"pct_local": "% de la LN Estatal", "Entidad": ""},
                 color_discrete_sequence=["#ff7f0e"]
             )
-            fig_top_65.update_traces(
-                textposition='inside', 
-                insidetextanchor='middle',
-                hovertemplate="<b>%{y}</b><br>Proporción: %{x:.2f}%<extra></extra>"
-            )
-            fig_top_65.update_layout(
-                margin=dict(l=5, r=5, t=30, b=10),
-                height=250,
-                xaxis=dict(showticklabels=False, title="")
-            )
+            fig_top_65.update_traces(textposition='inside', insidetextanchor='middle')
+            fig_top_65.update_layout(margin=dict(l=5, r=5, t=30, b=10), height=250, xaxis=dict(showticklabels=False, title=""))
             st.plotly_chart(fig_top_65, use_container_width=True, config=PLOTLY_CONFIG)
         except Exception as err:
             st.caption(f"No fue posible graficar el Top 5: {err}")
 
+# ==============================================================================
+# SECCIÓN MOVILIDAD Y REGISTRO ESPECIAL
+# ==============================================================================
 with tab_movilidad:
     try:
         q_chk = f"SELECT corte FROM derfe_origen WHERE corte = '{corte_reciente}' LIMIT 1"
@@ -660,6 +604,10 @@ with tab_movilidad:
             row_max = conn.execute(q_max).fetchone()
             corte_usar = row_max[0] if row_max else None
 
+        q_chk_esp = f"SELECT corte FROM derfe_especiales WHERE corte = '{corte_reciente}' LIMIT 1"
+        row_c_esp = conn.execute(q_chk_esp).fetchone()
+        corte_esp_usar = row_c_esp[0] if row_c_esp else corte_usar
+
         if corte_usar:
             cve_ent_num = claves_filtro[0] if (alcance == "Entidad Específica" and claves_filtro) else None
 
@@ -669,35 +617,53 @@ with tab_movilidad:
                 sinonimos = SINONIMOS_ORIGEN.get(cve_ent_num, (nom_ent_str,))
                 sinonimos_sql = ", ".join([f"'{s}'" for s in sinonimos])
 
-                # CONSULTA INTEGRAL EN DERFE_ORIGEN: Identifica Nativos, Foráneos, Clave 87 y Clave 88
-                q_origen_completo = f"""
+                # derfe_origen solo contiene padron_electoral
+                q_nac = f"""
                     SELECT 
                         CASE 
-                            WHEN UPPER(TRIM(entidad_origen)) IN ('87', 'HIJOS DE MEXICANOS NACIDOS EN EL EXTRANJERO', 'NACIDOS EN EL EXTRANJERO') THEN 'CLAVE_87'
-                            WHEN UPPER(TRIM(entidad_origen)) IN ('88', 'NATURALIZADOS', 'MEXICANOS POR NATURALIZACION') THEN 'CLAVE_88'
-                            WHEN UPPER(TRIM(entidad_origen)) IN ({sinonimos_sql}) THEN 'NATIVOS'
-                            ELSE 'FORANEOS'
-                        END AS clasificacion,
-                        SUM(COALESCE(padron_electoral, 0)) AS pe,
-                        SUM(COALESCE(lista_nominal, 0)) AS ln
+                            WHEN UPPER(TRIM(entidad_origen)) IN ({sinonimos_sql}) THEN 'NATIVOS' 
+                            ELSE 'FORANEOS' 
+                        END AS tipo,
+                        SUM(COALESCE(padron_electoral, 0)) AS pe
                     FROM derfe_origen
                     WHERE corte = '{corte_usar}' 
                       AND CAST(clave_entidad_residencia AS INT) = {cve_ent_num}
                       AND ambito = 'NACIONAL'
-                    GROUP BY clasificacion
+                      AND TRIM(CAST(entidad_origen AS TEXT)) NOT IN ('87', '88')
+                    GROUP BY tipo
                 """
-                df_clasif = pd.read_sql_query(q_origen_completo, conn)
+                df_nac = pd.read_sql_query(q_nac, conn)
+                pe_nat = int(df_nac[df_nac['tipo'] == 'NATIVOS']['pe'].sum()) if not df_nac.empty else 0
+                pe_foran = int(df_nac[df_nac['tipo'] == 'FORANEOS']['pe'].sum()) if not df_nac.empty else 0
 
-                def obtener_val(clasif, col):
-                    sub = df_clasif[df_clasif['clasificacion'] == clasif]
-                    return int(sub[col].iloc[0]) if not sub.empty else 0
-
-                pe_nat = obtener_val('NATIVOS', 'pe')
-                pe_foran = obtener_val('FORANEOS', 'pe')
-                pe_87 = obtener_val('CLAVE_87', 'pe')
-                pe_88 = obtener_val('CLAVE_88', 'pe')
-                ln_87 = obtener_val('CLAVE_87', 'ln')
-                ln_88 = obtener_val('CLAVE_88', 'ln')
+                if distrito_seleccionado is not None:
+                    q_esp = f"""
+                        SELECT 
+                            SUM(COALESCE(pe_87, 0)) AS pe_87,
+                            SUM(COALESCE(pe_88, 0)) AS pe_88,
+                            SUM(COALESCE(ln_87, 0)) AS ln_87,
+                            SUM(COALESCE(ln_88, 0)) AS ln_88
+                        FROM derfe_especiales
+                        WHERE corte = '{corte_esp_usar}' 
+                          AND CAST(clave_entidad AS INT) = {cve_ent_num}
+                          AND CAST(distrito AS INT) = {distrito_seleccionado}
+                    """
+                else:
+                    q_esp = f"""
+                        SELECT 
+                            SUM(COALESCE(pe_87, 0)) AS pe_87,
+                            SUM(COALESCE(pe_88, 0)) AS pe_88,
+                            SUM(COALESCE(ln_87, 0)) AS ln_87,
+                            SUM(COALESCE(ln_88, 0)) AS ln_88
+                        FROM derfe_especiales
+                        WHERE corte = '{corte_esp_usar}' 
+                          AND CAST(clave_entidad AS INT) = {cve_ent_num}
+                    """
+                df_esp_res = pd.read_sql_query(q_esp, conn)
+                pe_87 = int(df_esp_res['pe_87'].iloc[0] or 0) if not df_esp_res.empty else 0
+                pe_88 = int(df_esp_res['pe_88'].iloc[0] or 0) if not df_esp_res.empty else 0
+                ln_87 = int(df_esp_res['ln_87'].iloc[0] or 0) if not df_esp_res.empty else 0
+                ln_88 = int(df_esp_res['ln_88'].iloc[0] or 0) if not df_esp_res.empty else 0
 
                 q_ext = f"""
                     SELECT SUM(COALESCE(padron_electoral, 0)) AS pe_ext
@@ -783,8 +749,6 @@ with tab_movilidad:
                 q_nac_alt = f"""
                     SELECT 
                         CASE 
-                            WHEN UPPER(TRIM(entidad_origen)) IN ('87', 'HIJOS DE MEXICANOS NACIDOS EN EL EXTRANJERO', 'NACIDOS EN EL EXTRANJERO') THEN 'CLAVE_87'
-                            WHEN UPPER(TRIM(entidad_origen)) IN ('88', 'NATURALIZADOS', 'MEXICANOS POR NATURALIZACION') THEN 'CLAVE_88'
                             WHEN (
                                 UPPER(TRIM(entidad_origen)) = UPPER(TRIM(entidad_residencia))
                                 OR (UPPER(TRIM(entidad_origen)) IN ('CIUDAD DE MEXICO', 'DISTRITO FEDERAL', 'DF', 'CDMX') AND UPPER(TRIM(entidad_residencia)) IN ('CIUDAD DE MEXICO', 'DISTRITO FEDERAL', 'DF', 'CDMX'))
@@ -792,24 +756,30 @@ with tab_movilidad:
                             ) THEN 'NATIVOS'
                             ELSE 'FORANEOS'
                         END AS tipo,
-                        SUM(COALESCE(padron_electoral, 0)) AS pe,
-                        SUM(COALESCE(lista_nominal, 0)) AS ln
+                        SUM(COALESCE(padron_electoral, 0)) AS pe
                     FROM derfe_origen
                     WHERE corte = '{corte_usar}' AND ambito = 'NACIONAL'
+                      AND TRIM(CAST(entidad_origen AS TEXT)) NOT IN ('87', '88')
                     GROUP BY tipo
                 """
                 df_nac_alt = pd.read_sql_query(q_nac_alt, conn)
+                pe_nat_nac = int(df_nac_alt[df_nac_alt['tipo'] == 'NATIVOS']['pe'].sum()) if not df_nac_alt.empty else 0
+                pe_foran_nac = int(df_nac_alt[df_nac_alt['tipo'] == 'FORANEOS']['pe'].sum()) if not df_nac_alt.empty else 0
 
-                def val_nac(t, col):
-                    sub = df_nac_alt[df_nac_alt['tipo'] == t]
-                    return int(sub[col].iloc[0]) if not sub.empty else 0
-
-                pe_nat_nac = val_nac('NATIVOS', 'pe')
-                pe_foran_nac = val_nac('FORANEOS', 'pe')
-                pe_87_nac = val_nac('CLAVE_87', 'pe')
-                pe_88_nac = val_nac('CLAVE_88', 'pe')
-                ln_87_nac = val_nac('CLAVE_87', 'ln')
-                ln_88_nac = val_nac('CLAVE_88', 'ln')
+                q_esp_nac = f"""
+                    SELECT 
+                        SUM(COALESCE(pe_87, 0)) as pe_87, 
+                        SUM(COALESCE(pe_88, 0)) as pe_88, 
+                        SUM(COALESCE(ln_87, 0)) as ln_87, 
+                        SUM(COALESCE(ln_88, 0)) as ln_88 
+                    FROM derfe_especiales 
+                    WHERE corte = '{corte_esp_usar}'
+                """
+                df_esp_n = pd.read_sql_query(q_esp_nac, conn)
+                pe_87_nac = int(df_esp_n['pe_87'].iloc[0] or 0) if not df_esp_n.empty else 0
+                pe_88_nac = int(df_esp_n['pe_88'].iloc[0] or 0) if not df_esp_n.empty else 0
+                ln_87_nac = int(df_esp_n['ln_87'].iloc[0] or 0) if not df_esp_n.empty else 0
+                ln_88_nac = int(df_esp_n['ln_88'].iloc[0] or 0) if not df_esp_n.empty else 0
 
                 q_ext_nac = f"""
                     SELECT SUM(COALESCE(padron_electoral, 0)) AS pe_ext
@@ -828,8 +798,8 @@ with tab_movilidad:
                 cn1, cn2, cn3, cn4, cn5 = st.columns(5)
                 cn1.metric("Nativos en su Estado", f"{pe_nat_nac:,}", f"{pct_nat_nac:.1f}% del Padrón")
                 cn2.metric("Migración Interna (Foráneos)", f"{pe_foran_nac:,}", f"{pct_for_nac:.1f}% del Padrón")
-                cn3.metric("Clave 87: Nac. Ext. (Hijos Mex)", f"{pe_87_nac:,}", f"{pct_87_nac:.2f}% | LN: {ln_87_nac:,}" if ln_87_nac > 0 else f"{pct_87_nac:.2f}% del Padrón")
-                cn4.metric("Clave 88: Naturalizados", f"{pe_88_nac:,}", f"{pct_88_nac:.2f}% | LN: {ln_88_nac:,}" if ln_88_nac > 0 else f"{pct_88_nac:.2f}% del Padrón")
+                cn3.metric("Clave 87: Nac. Ext. (Hijos Mex)", f"{pe_87_nac:,}", f"{pct_87_nac:.2f}% | LN: {ln_87:,}" if ln_87_nac > 0 else f"{pct_87_nac:.2f}% del Padrón")
+                cn4.metric("Clave 88: Naturalizados", f"{pe_88_nac:,}", f"{pct_88_nac:.2f}% | LN: {ln_88:,}" if ln_88_nac > 0 else f"{pct_88_nac:.2f}% del Padrón")
                 cn5.metric("Residentes en el ext.", f"{pe_ext_nac:,}", help="Total nacional empadronado en el extranjero (Distritos 0)")
 
                 st.markdown("---")
@@ -848,26 +818,19 @@ with tab_movilidad:
                         hole=0.45,
                         color_discrete_sequence=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
                     )
-                    fig_pie_nac.update_traces(
-                        textposition='inside', 
-                        textinfo='percent+label',
-                        hovertemplate="<b>%{label}</b><br>Personas: %{value:,.0f} (%{percent})<extra></extra>"
-                    )
+                    fig_pie_nac.update_traces(textposition='inside', textinfo='percent+label')
                     fig_pie_nac.update_layout(margin=dict(l=10, r=10, t=40, b=10), showlegend=False, height=310)
                     st.plotly_chart(fig_pie_nac, use_container_width=True, config=PLOTLY_CONFIG)
 
                 with col_gn2:
                     q_ranking_esp = f"""
-                        SELECT 
-                            clave_entidad_residencia,
-                            SUM(CASE WHEN UPPER(TRIM(entidad_origen)) IN ('87', 'HIJOS DE MEXICANOS NACIDOS EN EL EXTRANJERO', 'NACIDOS EN EL EXTRANJERO') THEN padron_electoral ELSE 0 END) AS pe_87,
-                            SUM(CASE WHEN UPPER(TRIM(entidad_origen)) IN ('88', 'NATURALIZADOS', 'MEXICANOS POR NATURALIZACION') THEN padron_electoral ELSE 0 END) AS pe_88
-                        FROM derfe_origen
-                        WHERE corte = '{corte_usar}' AND ambito = 'NACIONAL'
-                        GROUP BY clave_entidad_residencia
+                        SELECT clave_entidad, SUM(COALESCE(pe_87, 0)) as pe_87, SUM(COALESCE(pe_88, 0)) as pe_88 
+                        FROM derfe_especiales 
+                        WHERE corte = '{corte_esp_usar}' 
+                        GROUP BY clave_entidad
                     """
                     df_esp_rank = pd.read_sql_query(q_ranking_esp, conn)
-                    df_esp_rank['Entidad'] = df_esp_rank['clave_entidad_residencia'].astype(int).map(CATALOGO_ENTIDADES)
+                    df_esp_rank['Entidad'] = df_esp_rank['clave_entidad'].astype(int).map(CATALOGO_ENTIDADES)
                     df_esp_rank['Total Especial'] = df_esp_rank['pe_87'] + df_esp_rank['pe_88']
                     df_esp_rank = df_esp_rank.sort_values(by="Total Especial", ascending=False).head(8)
 
@@ -880,9 +843,7 @@ with tab_movilidad:
                         labels={"value": "Padrón Electoral", "variable": "Clave Especial"},
                         color_discrete_sequence=["#2ca02c", "#d62728"]
                     )
-                    fig_bar_esp.update_traces(
-                        hovertemplate="<b>%{x}</b><br>%{data.name}: %{y:,.0f}<extra></extra>"
-                    )
+                    fig_bar_esp.update_traces(hovertemplate="<b>%{x}</b><br>%{data.name}: %{y:,.0f}<extra></extra>")
                     fig_bar_esp.update_layout(
                         margin=dict(l=10, r=10, t=40, b=10), 
                         height=310,
