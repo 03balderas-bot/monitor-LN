@@ -18,7 +18,7 @@ st.set_page_config(
 # TÍTULO VISIBLE Y VOCALÍA INSTITUCIONAL
 # ==============================================================================
 st.title("Análisis de Instrumentos registrales")
-st.subheader("Vocalía del Registro Federal de Electores Oaxaca")
+st.subheader("Vocalía del Registro Federal de Electores_Oaxaca")
 
 # ==============================================================================
 # CRÉDITO DE LA FUENTE DE DATOS EN LA BARRA LATERAL
