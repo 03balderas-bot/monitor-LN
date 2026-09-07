@@ -277,7 +277,7 @@ else:
 st.write("")
 
 # ==============================================================================
-# SECCIÓN 2: GRÁFICOS
+# SECCIÓN 2: GRÁFICOS VISUALES
 # ==============================================================================
 col_izq, col_der = st.columns([3, 2])
 
@@ -591,7 +591,7 @@ with tab_mayores:
             st.caption(f"No fue posible graficar el Top 5: {err}")
 
 # ==============================================================================
-# SECCIÓN MOVILIDAD Y REGISTRO ESPECIAL
+# SECCIÓN MOVILIDAD Y REGISTRO ESPECIAL (BLINDADA)
 # ==============================================================================
 with tab_movilidad:
     try:
@@ -617,7 +617,7 @@ with tab_movilidad:
                 sinonimos = SINONIMOS_ORIGEN.get(cve_ent_num, (nom_ent_str,))
                 sinonimos_sql = ", ".join([f"'{s}'" for s in sinonimos])
 
-                # derfe_origen solo contiene padron_electoral
+                # derfe_origen solo contiene padron_electoral (sin lista_nominal)
                 q_nac = f"""
                     SELECT 
                         CASE 
@@ -636,7 +636,14 @@ with tab_movilidad:
                 pe_nat = int(df_nac[df_nac['tipo'] == 'NATIVOS']['pe'].sum()) if not df_nac.empty else 0
                 pe_foran = int(df_nac[df_nac['tipo'] == 'FORANEOS']['pe'].sum()) if not df_nac.empty else 0
 
-                if distrito_seleccionado is not None:
+                # Inspección defensiva de la estructura de derfe_especiales
+                try:
+                    cols_esp = [r[1] for r in conn.execute("PRAGMA table_info(derfe_especiales)").fetchall()]
+                except Exception:
+                    cols_esp = []
+                tiene_distrito = 'distrito' in cols_esp
+
+                if tiene_distrito and distrito_seleccionado is not None:
                     q_esp = f"""
                         SELECT 
                             SUM(COALESCE(pe_87, 0)) AS pe_87,
@@ -664,6 +671,9 @@ with tab_movilidad:
                 pe_88 = int(df_esp_res['pe_88'].iloc[0] or 0) if not df_esp_res.empty else 0
                 ln_87 = int(df_esp_res['ln_87'].iloc[0] or 0) if not df_esp_res.empty else 0
                 ln_88 = int(df_esp_res['ln_88'].iloc[0] or 0) if not df_esp_res.empty else 0
+
+                if not tiene_distrito and distrito_seleccionado is not None:
+                    st.caption("ℹ️ *Cifras de Clave 87 y 88 mostradas a nivel estatal como referencia (pendiente consolidación distrital).*")
 
                 q_ext = f"""
                     SELECT SUM(COALESCE(padron_electoral, 0)) AS pe_ext
@@ -798,8 +808,8 @@ with tab_movilidad:
                 cn1, cn2, cn3, cn4, cn5 = st.columns(5)
                 cn1.metric("Nativos en su Estado", f"{pe_nat_nac:,}", f"{pct_nat_nac:.1f}% del Padrón")
                 cn2.metric("Migración Interna (Foráneos)", f"{pe_foran_nac:,}", f"{pct_for_nac:.1f}% del Padrón")
-                cn3.metric("Clave 87: Nac. Ext. (Hijos Mex)", f"{pe_87_nac:,}", f"{pct_87_nac:.2f}% | LN: {ln_87:,}" if ln_87_nac > 0 else f"{pct_87_nac:.2f}% del Padrón")
-                cn4.metric("Clave 88: Naturalizados", f"{pe_88_nac:,}", f"{pct_88_nac:.2f}% | LN: {ln_88:,}" if ln_88_nac > 0 else f"{pct_88_nac:.2f}% del Padrón")
+                cn3.metric("Clave 87: Nac. Ext. (Hijos Mex)", f"{pe_87_nac:,}", f"{pct_87_nac:.2f}% | LN: {ln_87_nac:,}" if ln_87_nac > 0 else f"{pct_87_nac:.2f}% del Padrón")
+                cn4.metric("Clave 88: Naturalizados", f"{pe_88_nac:,}", f"{pct_88_nac:.2f}% | LN: {ln_88_nac:,}" if ln_88_nac > 0 else f"{pct_88_nac:.2f}% del Padrón")
                 cn5.metric("Residentes en el ext.", f"{pe_ext_nac:,}", help="Total nacional empadronado en el extranjero (Distritos 0)")
 
                 st.markdown("---")
