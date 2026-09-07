@@ -161,10 +161,10 @@ def cargar_especiales_87_88(corte_solicitado: str):
             cve = int(row['clave_entidad'])
             dto = int(row['distrito'])
             res[(cve, dto)] = {
-                "pe_87": int(row['pe_87']),
-                "pe_88": int(row['pe_88']),
-                "ln_87": int(row['ln_87']),
-                "ln_88": int(row['ln_88'])
+                "pe_87": int(row['pe_87'] or 0),
+                "pe_88": int(row['pe_88'] or 0),
+                "ln_87": int(row['ln_87'] or 0),
+                "ln_88": int(row['ln_88'] or 0)
             }
 
         res["NACIONAL"] = {
@@ -697,7 +697,6 @@ with tab_movilidad:
             corte_usar = row_max[0] if row_max else None
 
         if corte_usar:
-            esp_dict = cargar_especiales_87_88(str(corte_usar))
             cve_ent_num = claves_filtro[0] if (alcance == "Entidad Específica" and claves_filtro) else None
 
             if alcance == "Entidad Específica" and cve_ent_num is not None:
@@ -733,22 +732,25 @@ with tab_movilidad:
                 row_ext = conn.execute(q_ext).fetchone()
                 pe_ext = int(row_ext[0] or 0) if (row_ext and row_ext[0] is not None) else 0
 
-                # EXTRACCIÓN Y SUMATORIA CORRECTA DE PADRON_87, PADRON_88, LISTA_87 Y LISTA_88
-                pe_87, pe_88, ln_87, ln_88 = 0, 0, 0, 0
+                # CONSULTA DIRECTA Y SEGURA DE LAS CLAVES 87 Y 88 DESDE DERFE_ESPECIALES
                 if distrito_seleccionado is not None:
-                    match_key = (cve_ent_num, distrito_seleccionado)
-                    if match_key in esp_dict:
-                        pe_87 = esp_dict[match_key]["pe_87"]
-                        pe_88 = esp_dict[match_key]["pe_88"]
-                        ln_87 = esp_dict[match_key]["ln_87"]
-                        ln_88 = esp_dict[match_key]["ln_88"]
+                    q_esp_filtro = f"""
+                        SELECT SUM(pe_87) as pe_87, SUM(pe_88) as pe_88, SUM(ln_87) as ln_87, SUM(ln_88) as ln_88 
+                        FROM derfe_especiales 
+                        WHERE corte = '{corte_usar}' AND CAST(clave_entidad AS INT) = {cve_ent_num} AND CAST(distrito AS INT) = {distrito_seleccionado}
+                    """
                 else:
-                    for (e_cve, d_dto), vals in esp_dict.items():
-                        if isinstance(e_cve, int) and e_cve == cve_ent_num:
-                            pe_87 += vals["pe_87"]
-                            pe_88 += vals["pe_88"]
-                            ln_87 += vals["ln_87"]
-                            ln_88 += vals["ln_88"]
+                    q_esp_filtro = f"""
+                        SELECT SUM(pe_87) as pe_87, SUM(pe_88) as pe_88, SUM(ln_87) as ln_87, SUM(ln_88) as ln_88 
+                        FROM derfe_especiales 
+                        WHERE corte = '{corte_usar}' AND CAST(clave_entidad AS INT) = {cve_ent_num}
+                    """
+                
+                df_esp_res = pd.read_sql_query(q_esp_filtro, conn)
+                pe_87 = int(df_esp_res['pe_87'].iloc[0] or 0) if not df_esp_res.empty else 0
+                pe_88 = int(df_esp_res['pe_88'].iloc[0] or 0) if not df_esp_res.empty else 0
+                ln_87 = int(df_esp_res['ln_87'].iloc[0] or 0) if not df_esp_res.empty else 0
+                ln_88 = int(df_esp_res['ln_88'].iloc[0] or 0) if not df_esp_res.empty else 0
 
                 pe_tot_local = pe_nat + pe_foran + pe_87 + pe_88
                 pct_nat = (pe_nat / pe_tot_local * 100) if pe_tot_local > 0 else 0
@@ -848,11 +850,12 @@ with tab_movilidad:
                 row_ext_nac = conn.execute(q_ext_nac).fetchone()
                 pe_ext_nac = int(row_ext_nac[0] or 0) if (row_ext_nac and row_ext_nac[0] is not None) else 0
 
-                datos_nac_esp = esp_dict.get("NACIONAL", {"pe_87": 0, "pe_88": 0, "ln_87": 0, "ln_88": 0})
-                pe_87_nac = datos_nac_esp["pe_87"]
-                pe_88_nac = datos_nac_esp["pe_88"]
-                ln_87_nac = datos_nac_esp["ln_87"]
-                ln_88_nac = datos_nac_esp["ln_88"]
+                q_esp_nac = f"SELECT SUM(pe_87) as pe_87, SUM(pe_88) as pe_88, SUM(ln_87) as ln_87, SUM(ln_88) as ln_88 FROM derfe_especiales WHERE corte = '{corte_usar}'"
+                df_esp_n = pd.read_sql_query(q_esp_nac, conn)
+                pe_87_nac = int(df_esp_n['pe_87'].iloc[0] or 0) if not df_esp_n.empty else 0
+                pe_88_nac = int(df_esp_n['pe_88'].iloc[0] or 0) if not df_esp_n.empty else 0
+                ln_87_nac = int(df_esp_n['ln_87'].iloc[0] or 0) if not df_esp_n.empty else 0
+                ln_88_nac = int(df_esp_n['ln_88'].iloc[0] or 0) if not df_esp_n.empty else 0
 
                 pe_tot_pais = pe_nat_nac + pe_foran_nac + pe_87_nac + pe_88_nac
                 pct_nat_nac = (pe_nat_nac / pe_tot_pais * 100) if pe_tot_pais > 0 else 0
@@ -892,31 +895,24 @@ with tab_movilidad:
                     st.plotly_chart(fig_pie_nac, use_container_width=True, config=PLOTLY_CONFIG)
 
                 with col_gn2:
-                    ent_agregadas = {}
-                    for (e_cve, d_dto), vals in esp_dict.items():
-                        if isinstance(e_cve, int):
-                            if e_cve not in ent_agregadas:
-                                ent_agregadas[e_cve] = {"pe_87": 0, "pe_88": 0}
-                            ent_agregadas[e_cve]["pe_87"] += vals["pe_87"]
-                            ent_agregadas[e_cve]["pe_88"] += vals["pe_88"]
-
-                    lista_esp = []
-                    for k_cve, d_val in ent_agregadas.items():
-                        tot_esp = d_val["pe_87"] + d_val["pe_88"]
-                        lista_esp.append({
-                            "Entidad": CATALOGO_ENTIDADES.get(k_cve, f"Ent {k_cve}"),
-                            "Hijos en Ext. (87)": d_val["pe_87"],
-                            "Naturalizados (88)": d_val["pe_88"],
-                            "Total Especial": tot_esp
-                        })
-                    df_esp_rank = pd.DataFrame(lista_esp).sort_values(by="Total Especial", ascending=False).head(8)
+                    q_ranking_esp = f"""
+                        SELECT clave_entidad, SUM(pe_87) as pe_87, SUM(pe_88) as pe_88 
+                        FROM derfe_especiales 
+                        WHERE corte = '{corte_usar}' 
+                        GROUP BY clave_entidad
+                    """
+                    df_esp_rank = pd.read_sql_query(q_ranking_esp, conn)
+                    df_esp_rank['Entidad'] = df_esp_rank['clave_entidad'].astype(int).map(CATALOGO_ENTIDADES)
+                    df_esp_rank['Total Especial'] = df_esp_rank['pe_87'] + df_esp_rank['pe_88']
+                    df_esp_rank = df_esp_rank.sort_values(by="Total Especial", ascending=False).head(8)
 
                     fig_bar_esp = px.bar(
                         df_esp_rank,
                         x="Entidad",
-                        y=["Hijos en Ext. (87)", "Naturalizados (88)"],
+                        y=["pe_87", "pe_88"],
                         barmode="stack",
                         title="Top 8 Entidades Receptoras de Claves 87 y 88",
+                        labels={"value": "Padrón Electoral", "variable": "Clave Especial"},
                         color_discrete_sequence=["#2ca02c", "#d62728"]
                     )
                     fig_bar_esp.update_traces(
