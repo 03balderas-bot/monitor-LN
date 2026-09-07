@@ -160,7 +160,6 @@ def cargar_especiales_87_88(corte_solicitado: str):
         for _, row in df_esp.iterrows():
             cve = int(row['clave_entidad'])
             dto = int(row['distrito'])
-            # Almacenamos usando una tupla (entidad, distrito) como clave exacta
             res[(cve, dto)] = {
                 "pe_87": int(row['pe_87']),
                 "pe_88": int(row['pe_88']),
@@ -707,8 +706,6 @@ with tab_movilidad:
                 sinonimos = SINONIMOS_ORIGEN.get(cve_ent_num, (nom_ent_str,))
                 sinonimos_sql = ", ".join([f"'{s}'" for s in sinonimos])
 
-                cond_mov_dist = f"AND CAST(distrito AS INT) = {distrito_seleccionado}" if distrito_seleccionado is not None else ""
-
                 q_nac = f"""
                     SELECT 
                         CASE 
@@ -720,7 +717,6 @@ with tab_movilidad:
                     WHERE corte = '{corte_usar}' 
                       AND CAST(clave_entidad_residencia AS INT) = {cve_ent_num}
                       AND ambito = 'NACIONAL'
-                      {cond_mov_dist}
                     GROUP BY tipo
                 """
                 df_nac = pd.read_sql_query(q_nac, conn)
@@ -737,7 +733,7 @@ with tab_movilidad:
                 row_ext = conn.execute(q_ext).fetchone()
                 pe_ext = int(row_ext[0] or 0) if (row_ext and row_ext[0] is not None) else 0
 
-                # EXTRACCIÓN DINÁMICA DE CLAVES 87 Y 88 (Soporta distrito o suma toda la entidad)
+                # EXTRACCIÓN Y SUMATORIA CORRECTA DE PADRON_87, PADRON_88, LISTA_87 Y LISTA_88
                 pe_87, pe_88, ln_87, ln_88 = 0, 0, 0, 0
                 if distrito_seleccionado is not None:
                     match_key = (cve_ent_num, distrito_seleccionado)
@@ -896,7 +892,6 @@ with tab_movilidad:
                     st.plotly_chart(fig_pie_nac, use_container_width=True, config=PLOTLY_CONFIG)
 
                 with col_gn2:
-                    # Agrupar especiales por entidad para el ranking nacional
                     ent_agregadas = {}
                     for (e_cve, d_dto), vals in esp_dict.items():
                         if isinstance(e_cve, int):
