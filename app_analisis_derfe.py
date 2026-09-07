@@ -696,38 +696,24 @@ with tab_movilidad:
                 row_ext = conn.execute(q_ext).fetchone()
                 pe_ext = int(row_ext[0] or 0) if (row_ext and row_ext[0] is not None) else 0
 
-                # CORRECCIÓN: Como derfe_especiales utiliza 'entidad' (o clave_entidad) y no tiene el campo distrito, 
-                # evitamos el error usando condicionales seguras y sumando las columnas PADRON_87, PADRON_88, LISTA_87, LISTA_88.
-                if distrito_seleccionado is not None:
-                    # Validamos si la tabla tiene columna para distrito o si filtramos por el distrito correspondiente en derfe_especiales
-                    # Usamos una consulta que se adapte de forma segura sin causar excepciones SQL
-                    try:
-                        q_esp_filtro = f"""
-                            SELECT SUM(pe_87) as pe_87, SUM(pe_88) as pe_88, SUM(ln_87) as ln_87, SUM(ln_88) as ln_88 
-                            FROM derfe_especiales 
-                            WHERE corte = '{corte_usar}' AND CAST(clave_entidad AS INT) = {cve_ent_num} AND CAST(distrito AS INT) = {distrito_seleccionado}
-                        """
-                        df_esp_res = pd.read_sql_query(q_esp_filtro, conn)
-                    except Exception:
-                        # Si la tabla derfe_especiales no soporta distrito directo, asignamos proporcional u omitimos el error
-                        q_esp_filtro = f"""
-                            SELECT SUM(pe_87) as pe_87, SUM(pe_88) as pe_88, SUM(ln_87) as ln_87, SUM(ln_88) as ln_88 
-                            FROM derfe_especiales 
-                            WHERE corte = '{corte_usar}' AND CAST(clave_entidad AS INT) = {cve_ent_num}
-                        """
-                        df_esp_res = pd.read_sql_query(q_esp_filtro, conn)
-                else:
-                    q_esp_filtro = f"""
-                        SELECT SUM(pe_87) as pe_87, SUM(pe_88) as pe_88, SUM(ln_87) as ln_87, SUM(ln_88) as ln_88 
-                        FROM derfe_especiales 
-                        WHERE corte = '{corte_usar}' AND CAST(clave_entidad AS INT) = {cve_ent_num}
-                    """
-                    df_esp_res = pd.read_sql_query(q_esp_filtro, conn)
-                
-                pe_87 = int(df_esp_res['pe_87'].iloc[0] or 0) if not df_esp_res.empty else 0
-                pe_88 = int(df_esp_res['pe_88'].iloc[0] or 0) if not df_esp_res.empty else 0
-                ln_87 = int(df_esp_res['ln_87'].iloc[0] or 0) if not df_esp_res.empty else 0
-                ln_88 = int(df_esp_res['ln_88'].iloc[0] or 0) if not df_esp_res.empty else 0
+                # SOLUCIÓN DEFINITIVA: Cargamos toda la tabla especial de la entidad a Pandas y filtramos localmente 
+                # (evitando errores de nombres de columnas de distrito en SQLite)
+                q_esp_entidad = f"""
+                    SELECT * FROM derfe_especiales 
+                    WHERE corte = '{corte_usar}' AND CAST(clave_entidad AS INT) = {cve_ent_num}
+                """
+                df_esp_local = pd.read_sql_query(q_esp_entidad, conn)
+
+                if distrito_seleccionado is not None and not df_esp_local.empty:
+                    # Buscamos dinámicamente qué columna representa el distrito en esta tabla
+                    col_dto_encontrada = next((col for col in df_esp_local.columns if 'distrito' in col.lower() or 'dto' in col.lower()), None)
+                    if col_dto_encontrada:
+                        df_esp_local = df_esp_local[df_esp_local[col_dto_encontrada].astype(int) == distrito_seleccionado]
+
+                pe_87 = int(df_esp_local['pe_87'].sum() or 0) if 'pe_87' in df_esp_local.columns else 0
+                pe_88 = int(df_esp_local['pe_88'].sum() or 0) if 'pe_88' in df_esp_local.columns else 0
+                ln_87 = int(df_esp_local['ln_87'].sum() or 0) if 'ln_87' in df_esp_local.columns else 0
+                ln_88 = int(df_esp_local['ln_88'].sum() or 0) if 'ln_88' in df_esp_local.columns else 0
 
                 pe_tot_local = pe_nat + pe_foran + pe_87 + pe_88
                 pct_nat = (pe_nat / pe_tot_local * 100) if pe_tot_local > 0 else 0
