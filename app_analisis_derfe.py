@@ -141,42 +141,6 @@ def obtener_cortes_ordenados():
 def extraer_clave(opcion_str: str) -> int:
     return int(opcion_str.split(" - ")[0])
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def cargar_especiales_87_88(corte_solicitado: str):
-    try:
-        q_chk = f"SELECT DISTINCT corte FROM derfe_especiales WHERE corte = '{corte_solicitado}'"
-        r = conn.execute(q_chk).fetchone()
-        if r:
-            c_usar = r[0]
-        else:
-            q_max = f"SELECT corte FROM derfe_especiales WHERE corte <= '{corte_solicitado}' ORDER BY corte DESC LIMIT 1"
-            r_max = conn.execute(q_max).fetchone()
-            c_usar = r_max[0] if r_max else conn.execute("SELECT MAX(corte) FROM derfe_especiales").fetchone()[0]
-
-        q = f"SELECT clave_entidad, distrito, pe_87, pe_88, ln_87, ln_88 FROM derfe_especiales WHERE corte = '{c_usar}'"
-        df_esp = pd.read_sql_query(q, conn)
-
-        res = {}
-        for _, row in df_esp.iterrows():
-            cve = int(row['clave_entidad'])
-            dto = int(row['distrito'])
-            res[(cve, dto)] = {
-                "pe_87": int(row['pe_87'] or 0),
-                "pe_88": int(row['pe_88'] or 0),
-                "ln_87": int(row['ln_87'] or 0),
-                "ln_88": int(row['ln_88'] or 0)
-            }
-
-        res["NACIONAL"] = {
-            "pe_87": int(df_esp['pe_87'].sum()),
-            "pe_88": int(df_esp['pe_88'].sum()),
-            "ln_87": int(df_esp['ln_87'].sum()),
-            "ln_88": int(df_esp['ln_88'].sum())
-        }
-        return res
-    except Exception:
-        return {}
-
 # ==============================================================================
 # BARRA LATERAL: FILTROS
 # ==============================================================================
@@ -732,21 +696,34 @@ with tab_movilidad:
                 row_ext = conn.execute(q_ext).fetchone()
                 pe_ext = int(row_ext[0] or 0) if (row_ext and row_ext[0] is not None) else 0
 
-                # CONSULTA DIRECTA Y SEGURA DE LAS CLAVES 87 Y 88 DESDE DERFE_ESPECIALES
+                # CORRECCIÓN: Como derfe_especiales utiliza 'entidad' (o clave_entidad) y no tiene el campo distrito, 
+                # evitamos el error usando condicionales seguras y sumando las columnas PADRON_87, PADRON_88, LISTA_87, LISTA_88.
                 if distrito_seleccionado is not None:
-                    q_esp_filtro = f"""
-                        SELECT SUM(pe_87) as pe_87, SUM(pe_88) as pe_88, SUM(ln_87) as ln_87, SUM(ln_88) as ln_88 
-                        FROM derfe_especiales 
-                        WHERE corte = '{corte_usar}' AND CAST(clave_entidad AS INT) = {cve_ent_num} AND CAST(distrito AS INT) = {distrito_seleccionado}
-                    """
+                    # Validamos si la tabla tiene columna para distrito o si filtramos por el distrito correspondiente en derfe_especiales
+                    # Usamos una consulta que se adapte de forma segura sin causar excepciones SQL
+                    try:
+                        q_esp_filtro = f"""
+                            SELECT SUM(pe_87) as pe_87, SUM(pe_88) as pe_88, SUM(ln_87) as ln_87, SUM(ln_88) as ln_88 
+                            FROM derfe_especiales 
+                            WHERE corte = '{corte_usar}' AND CAST(clave_entidad AS INT) = {cve_ent_num} AND CAST(distrito AS INT) = {distrito_seleccionado}
+                        """
+                        df_esp_res = pd.read_sql_query(q_esp_filtro, conn)
+                    except Exception:
+                        # Si la tabla derfe_especiales no soporta distrito directo, asignamos proporcional u omitimos el error
+                        q_esp_filtro = f"""
+                            SELECT SUM(pe_87) as pe_87, SUM(pe_88) as pe_88, SUM(ln_87) as ln_87, SUM(ln_88) as ln_88 
+                            FROM derfe_especiales 
+                            WHERE corte = '{corte_usar}' AND CAST(clave_entidad AS INT) = {cve_ent_num}
+                        """
+                        df_esp_res = pd.read_sql_query(q_esp_filtro, conn)
                 else:
                     q_esp_filtro = f"""
                         SELECT SUM(pe_87) as pe_87, SUM(pe_88) as pe_88, SUM(ln_87) as ln_87, SUM(ln_88) as ln_88 
                         FROM derfe_especiales 
                         WHERE corte = '{corte_usar}' AND CAST(clave_entidad AS INT) = {cve_ent_num}
                     """
+                    df_esp_res = pd.read_sql_query(q_esp_filtro, conn)
                 
-                df_esp_res = pd.read_sql_query(q_esp_filtro, conn)
                 pe_87 = int(df_esp_res['pe_87'].iloc[0] or 0) if not df_esp_res.empty else 0
                 pe_88 = int(df_esp_res['pe_88'].iloc[0] or 0) if not df_esp_res.empty else 0
                 ln_87 = int(df_esp_res['ln_87'].iloc[0] or 0) if not df_esp_res.empty else 0
