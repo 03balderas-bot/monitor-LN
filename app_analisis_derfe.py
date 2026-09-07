@@ -696,24 +696,37 @@ with tab_movilidad:
                 row_ext = conn.execute(q_ext).fetchone()
                 pe_ext = int(row_ext[0] or 0) if (row_ext and row_ext[0] is not None) else 0
 
-                # SOLUCIÓN DEFINITIVA: Cargamos toda la tabla especial de la entidad a Pandas y filtramos localmente 
-                # (evitando errores de nombres de columnas de distrito en SQLite)
-                q_esp_entidad = f"""
-                    SELECT * FROM derfe_especiales 
-                    WHERE corte = '{corte_usar}' AND CAST(clave_entidad AS INT) = {cve_ent_num}
-                """
-                df_esp_local = pd.read_sql_query(q_esp_entidad, conn)
+                # EXTRACCIÓN CORRECTA: Obtenemos los valores de las claves 87 y 88 sumando directamente 
+                # los campos de rangos de edad desde la tabla derfe_edad (respetando si hay distrito seleccionado)
+                if distrito_seleccionado is not None:
+                    q_edad_especial = f"""
+                        SELECT 
+                            SUM(COALESCE(padron_87, 0)) AS pe_87, 
+                            SUM(COALESCE(padron_88, 0)) AS pe_88, 
+                            SUM(COALESCE(lista_87, 0)) AS ln_87, 
+                            SUM(COALESCE(lista_88, 0)) AS ln_88 
+                        FROM derfe_edad 
+                        WHERE TRIM(CAST(corte AS TEXT)) = '{corte_reciente}' 
+                          AND CAST(clave_entidad AS INT) = {cve_ent_num} 
+                          AND CAST(distrito AS INT) = {distrito_seleccionado}
+                    """
+                else:
+                    q_edad_especial = f"""
+                        SELECT 
+                            SUM(COALESCE(padron_87, 0)) AS pe_87, 
+                            SUM(COALESCE(padron_88, 0)) AS pe_88, 
+                            SUM(COALESCE(lista_87, 0)) AS ln_87, 
+                            SUM(COALESCE(lista_88, 0)) AS ln_88 
+                        FROM derfe_edad 
+                        WHERE TRIM(CAST(corte AS TEXT)) = '{corte_reciente}' 
+                          AND CAST(clave_entidad AS INT) = {cve_ent_num}
+                    """
 
-                if distrito_seleccionado is not None and not df_esp_local.empty:
-                    # Buscamos dinámicamente qué columna representa el distrito en esta tabla
-                    col_dto_encontrada = next((col for col in df_esp_local.columns if 'distrito' in col.lower() or 'dto' in col.lower()), None)
-                    if col_dto_encontrada:
-                        df_esp_local = df_esp_local[df_esp_local[col_dto_encontrada].astype(int) == distrito_seleccionado]
-
-                pe_87 = int(df_esp_local['pe_87'].sum() or 0) if 'pe_87' in df_esp_local.columns else 0
-                pe_88 = int(df_esp_local['pe_88'].sum() or 0) if 'pe_88' in df_esp_local.columns else 0
-                ln_87 = int(df_esp_local['ln_87'].sum() or 0) if 'ln_87' in df_esp_local.columns else 0
-                ln_88 = int(df_esp_local['ln_88'].sum() or 0) if 'ln_88' in df_esp_local.columns else 0
+                df_esp_edad = pd.read_sql_query(q_edad_especial, conn)
+                pe_87 = int(df_esp_edad['pe_87'].iloc[0] or 0) if not df_esp_edad.empty else 0
+                pe_88 = int(df_esp_edad['pe_88'].iloc[0] or 0) if not df_esp_edad.empty else 0
+                ln_87 = int(df_esp_edad['ln_87'].iloc[0] or 0) if not df_esp_edad.empty else 0
+                ln_88 = int(df_esp_edad['ln_88'].iloc[0] or 0) if not df_esp_edad.empty else 0
 
                 pe_tot_local = pe_nat + pe_foran + pe_87 + pe_88
                 pct_nat = (pe_nat / pe_tot_local * 100) if pe_tot_local > 0 else 0
@@ -813,7 +826,15 @@ with tab_movilidad:
                 row_ext_nac = conn.execute(q_ext_nac).fetchone()
                 pe_ext_nac = int(row_ext_nac[0] or 0) if (row_ext_nac and row_ext_nac[0] is not None) else 0
 
-                q_esp_nac = f"SELECT SUM(pe_87) as pe_87, SUM(pe_88) as pe_88, SUM(ln_87) as ln_87, SUM(ln_88) as ln_88 FROM derfe_especiales WHERE corte = '{corte_usar}'"
+                q_esp_nac = f"""
+                    SELECT 
+                        SUM(COALESCE(padron_87, 0)) AS pe_87, 
+                        SUM(COALESCE(padron_88, 0)) AS pe_88, 
+                        SUM(COALESCE(lista_87, 0)) AS ln_87, 
+                        SUM(COALESCE(lista_88, 0)) AS ln_88 
+                    FROM derfe_edad 
+                    WHERE TRIM(CAST(corte AS TEXT)) = '{corte_reciente}'
+                """
                 df_esp_n = pd.read_sql_query(q_esp_nac, conn)
                 pe_87_nac = int(df_esp_n['pe_87'].iloc[0] or 0) if not df_esp_n.empty else 0
                 pe_88_nac = int(df_esp_n['pe_88'].iloc[0] or 0) if not df_esp_n.empty else 0
@@ -859,9 +880,9 @@ with tab_movilidad:
 
                 with col_gn2:
                     q_ranking_esp = f"""
-                        SELECT clave_entidad, SUM(pe_87) as pe_87, SUM(pe_88) as pe_88 
-                        FROM derfe_especiales 
-                        WHERE corte = '{corte_usar}' 
+                        SELECT clave_entidad, SUM(COALESCE(padron_87, 0)) as pe_87, SUM(COALESCE(padron_88, 0)) as pe_88 
+                        FROM derfe_edad 
+                        WHERE TRIM(CAST(corte AS TEXT)) = '{corte_reciente}' 
                         GROUP BY clave_entidad
                     """
                     df_esp_rank = pd.read_sql_query(q_ranking_esp, conn)
@@ -944,7 +965,7 @@ with st.expander("📋 Ver Tabla Detallada de Datos y Exportar"):
     if alcance == "Entidad Específica" and distrito_seleccionado is None:
         q_tab = f"""
             SELECT 
-                CASE WHEN CAST(distrito AS INT) = 0 THEN 'Extranjero' ELSE 'Distrito ' || CAST(distrito AS TEXT) END AS 'Distrito Federal',
+                CASE WHEN CAST(distrito AS INT) = 0 THEN 'Extranjero' ELSE 'Dto ' || CAST(distrito AS TEXT) END AS 'Distrito Federal',
                 padron_electoral AS 'Padrón Electoral', lista_nominal AS 'Lista Nominal',
                 hombres_padron AS 'Hombres', mujeres_padron AS 'Mujeres',
                 ROUND(lista_nominal*100.0/padron_electoral, 2) AS 'Cobertura (%)'
