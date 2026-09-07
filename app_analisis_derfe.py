@@ -231,7 +231,6 @@ with st.sidebar:
         claves_filtro = [cve]
         nom_ent_base = CATALOGO_ENTIDADES.get(cve, "Entidad")
 
-        # NUEVO: Selector de Distrito Electoral Jerárquico
         try:
             query_distritos = f"SELECT DISTINCT distrito FROM derfe_sexo WHERE clave_entidad = {cve} AND distrito IS NOT NULL ORDER BY CAST(distrito AS INT)"
             df_distritos = pd.read_sql_query(query_distritos, conn)
@@ -274,7 +273,7 @@ if modo == "Comparar con Periodo Previo" and corte_base:
 else:
     st.markdown(f"<div class='sub-title'>Corte de operación: <b>{formatear_corte(corte_reciente)}</b></div>", unsafe_allow_html=True)
 
-# FILTRADO SQL HOMOGÉNEO (Incluyendo soporte para distrito específico)
+# FILTRADO SQL HOMOGÉNEO
 if alcance == "Entidad Específica":
     cve_ent = claves_filtro[0]
     if distrito_seleccionado is not None:
@@ -508,7 +507,7 @@ tab_jovenes, tab_mayores, tab_movilidad = st.tabs([
 ])
 
 with tab_jovenes:
-    col_j1, col_j2 = st.columns([3, 2])
+    col_j1, col_j2 = st.columns([2, 3])  # <--- COLUMNAS AMPLIADAS PARA EVITAR RECORTE
     with col_j1:
         if modo == "Comparar con Periodo Previo" and corte_base:
             q_edad2 = f"""
@@ -588,8 +587,8 @@ with tab_jovenes:
                 hovertemplate="<b>%{y}</b><br>Proporción: %{x:.2f}%<extra></extra>"
             )
             fig_top_j.update_layout(
-                margin=dict(l=10, r=15, t=40, b=20),
-                height=260,
+                margin=dict(l=20, r=20, t=40, b=20),
+                height=280,
                 xaxis=dict(showticklabels=False, title="")
             )
             st.plotly_chart(fig_top_j, use_container_width=True, config=PLOTLY_CONFIG)
@@ -597,7 +596,7 @@ with tab_jovenes:
             st.caption(f"No fue posible graficar el Top 5: {err}")
 
 with tab_mayores:
-    col_m1, col_m2 = st.columns([3, 2])
+    col_m1, col_m2 = st.columns([2, 3])  # <--- COLUMNAS AMPLIADAS PARA EVITAR RECORTE
     with col_m1:
         if modo == "Comparar con Periodo Previo" and corte_base:
             q_edad65_2 = f"""
@@ -677,8 +676,8 @@ with tab_mayores:
                 hovertemplate="<b>%{y}</b><br>Proporción: %{x:.2f}%<extra></extra>"
             )
             fig_top_65.update_layout(
-                margin=dict(l=10, r=15, t=40, b=20),
-                height=260,
+                margin=dict(l=20, r=20, t=40, b=20),
+                height=280,
                 xaxis=dict(showticklabels=False, title="")
             )
             st.plotly_chart(fig_top_65, use_container_width=True, config=PLOTLY_CONFIG)
