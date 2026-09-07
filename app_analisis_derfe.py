@@ -1,18 +1,35 @@
-import sqlite3
-from pathlib import Path
-import pandas as pd
-import plotly.express as px
 import streamlit as st
+import pandas as pd
+import sqlite3
+import plotly.express as px
 
 # ==============================================================================
 # CONFIGURACIÓN DE PÁGINA Y ESTILO RESPONSIVO PARA MÓVILES Y ESCRITORIO
 # ==============================================================================
 st.set_page_config(
-    page_title="Monitor DERFE | INE México",
+    page_title="Monitor DERFE | INE Oaxaca",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="auto"
 )
+
+# ==============================================================================
+# TÍTULO VISIBLE Y VOCALÍA INSTITUCIONAL
+# ==============================================================================
+st.title("Análisis de Instrumentos registrales")
+st.subheader("Vocalía del Registro Federal de Electores Oaxaca")
+
+# ==============================================================================
+# CRÉDITO DE LA FUENTE DE DATOS EN LA BARRA LATERAL
+# ==============================================================================
+st.sidebar.markdown("---")
+st.sidebar.markdown(
+    "### Fuente de Información\n"
+    "Datos recopilados de los [Datos Abiertos del Padrón Electoral - INE](https://ine.mx/transparencia/datos-abiertos/#/tematica/padron-electoral)."
+)
+st.sidebar.markdown("---")
+
+# [A partir de aquí continúa el resto de tu código de lectura de base de datos, filtros y gráficas...]
 
 st.markdown("""
 <style>
