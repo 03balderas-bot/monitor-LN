@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import plotly.express as px
+from pathlib import Path
 
 # ==============================================================================
 # CONFIGURACIÓN DE PÁGINA Y ESTILO RESPONSIVO PARA MÓVILES Y ESCRITORIO
