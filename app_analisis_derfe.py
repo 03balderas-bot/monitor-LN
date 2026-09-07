@@ -44,18 +44,22 @@ st.markdown("""
         margin-bottom: 1rem;
     }
     [data-testid="stMetricValue"] {
-        font-size: 1.35rem !important;
+        font-size: 1.25rem !important;
         font-weight: 700;
     }
     [data-testid="stMetricLabel"] {
-        font-size: 0.82rem !important;
+        font-size: 0.78rem !important;
+        white-space: normal !important;
+    }
+    [data-testid="stMetricDelta"] {
+        font-size: 0.75rem !important;
     }
     @media (max-width: 768px) {
         .main-title {
             font-size: 1.3rem !important;
         }
         [data-testid="stMetricValue"] {
-            font-size: 1.15rem !important;
+            font-size: 1.05rem !important;
         }
         [data-testid="column"] {
             min-width: 45% !important;
