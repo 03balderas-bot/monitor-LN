@@ -1,9 +1,7 @@
-import streamlit as str_lit
 import streamlit as st
 import pandas as pd
 import sqlite3
 import unicodedata
-import re
 from pathlib import Path
 from io import BytesIO
 import matplotlib.pyplot as plt
@@ -185,7 +183,7 @@ def consultar_datos_agregados_seguro(corte, condicion_sql):
         return pd.DataFrame([{'padron':0, 'lista':0, 'h_padron':0, 'h_lista':0, 'm_padron':0, 'm_lista':0, 'nb_padron':0, 'nb_lista':0}])
 
 # ==============================================================================
-# FUNCIONES DE INTELIGENCIA VISUAL Y GRÁFICAS (ROBUSTAS CON RESPALDO)
+# FUNCIONES DE INTELIGENCIA VISUAL Y GRÁFICAS
 # ==============================================================================
 def generar_grafico_top_jovenes(corte):
     try:
@@ -218,7 +216,6 @@ def generar_grafico_top_jovenes(corte):
                     buf.seek(0)
                     return buf
         
-        # Respaldo visual si PE_RE no existe: Graficar distribución de participación general por entidad
         q_alt = """
             SELECT CLAVE_ENTIDAD, (SUM(CAST("PADRON ELECTORAL" AS REAL)) * 100.0 / (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX WHERE FECHA_CORTE = ?)) as pct
             FROM PE_SEX WHERE FECHA_CORTE = ? GROUP BY CLAVE_ENTIDAD ORDER BY pct DESC LIMIT 5
@@ -273,7 +270,6 @@ def generar_grafico_top_mayores(corte):
                     buf.seek(0)
                     return buf
 
-        # Respaldo si PE_RE no está disponible
         q_alt = """
             SELECT CLAVE_ENTIDAD, (SUM(CAST("LISTA NOMINAL" AS REAL)) * 100.0 / SUM(CAST("PADRON ELECTORAL" AS REAL))) as cob
             FROM PE_SEX WHERE FECHA_CORTE = ? GROUP BY CLAVE_ENTIDAD ORDER BY cob DESC LIMIT 5
@@ -332,7 +328,6 @@ def generar_grafico_top_extranjero(corte):
 def generar_grafico_distritos_negativos(corte_rec, corte_bas):
     try:
         if not corte_bas: return None
-        
         q = f"""
             SELECT CLAVE_ENTIDAD, CLAVE_DISTRITO,
                    SUM(CAST(PADRON_NATIVO + PADRON_FORANEO + PADRON_NATURALIZADO AS REAL)) as padron
@@ -351,12 +346,12 @@ def generar_grafico_distritos_negativos(corte_rec, corte_bas):
         
         df_negativos['etiqueta'] = df_negativos['CLAVE_ENTIDAD'].map(CATALOGO_ENTIDADES) + " - Dist. " + df_negativos['CLAVE_DISTRITO'].astype(str)
         
-        plt.figure(figsize=(6.5, 3.5))
+        plt.figure(figsize=(6.5, 3.2))
         plt.barh(df_negativos['etiqueta'][::-1], df_negativos['pct_crecimiento'][::-1], color='#EF4444')
         plt.title(f"Top 15 Distritos con Mayor Decremento / Crecimiento Negativo (%)", fontsize=9, fontweight='bold', color='#4A2E7A')
         plt.xlabel("Variación Porcentual (%)", fontsize=8)
         plt.xticks(fontsize=7.5)
-        plt.yticks(fontsize=7.5)
+        plt.yticks(fontsize=7.0)
         plt.tight_layout()
         
         buf = BytesIO()
@@ -370,7 +365,6 @@ def generar_grafico_distritos_negativos(corte_rec, corte_bas):
 def generar_grafico_distritos_positivos(corte_rec, corte_bas):
     try:
         if not corte_bas: return None
-        
         q = f"""
             SELECT CLAVE_ENTIDAD, CLAVE_DISTRITO,
                    SUM(CAST(PADRON_NATIVO + PADRON_FORANEO + PADRON_NATURALIZADO AS REAL)) as padron
@@ -389,12 +383,12 @@ def generar_grafico_distritos_positivos(corte_rec, corte_bas):
         
         df_positivos['etiqueta'] = df_positivos['CLAVE_ENTIDAD'].map(CATALOGO_ENTIDADES) + " - Dist. " + df_positivos['CLAVE_DISTRITO'].astype(str)
         
-        plt.figure(figsize=(6.5, 3.5))
+        plt.figure(figsize=(6.5, 3.2))
         plt.barh(df_positivos['etiqueta'][::-1], df_positivos['pct_crecimiento'][::-1], color='#10B981')
         plt.title(f"Top 15 Distritos con Mayor Crecimiento Positivo (%)", fontsize=9, fontweight='bold', color='#4A2E7A')
         plt.xlabel("Variación Porcentual (%)", fontsize=8)
         plt.xticks(fontsize=7.5)
-        plt.yticks(fontsize=7.5)
+        plt.yticks(fontsize=7.0)
         plt.tight_layout()
         
         buf = BytesIO()
@@ -437,7 +431,6 @@ def generar_pdf_reporte(titulo_alcance, desc_cortes, p1, p2, l1, l2, cob1, cob2,
     story.append(Paragraph(f"<b>Ámbito Geográfico:</b> {titulo_alcance} | {desc_cortes}", subtitle_style))
     story.append(HRFlowable(width="100%", thickness=1.2, color=ine_purple, spaceAfter=6))
     
-    # NOTA METODOLÓGICA CON PUEBLA
     txt_advertencia = (
         "<b>⚠️ Nota Metodológica de Validación:</b> La nueva demarcación distrital federal entró en vigor a partir de los "
         "cortes de mediados de 2023 (ej. Puebla ganó un distrito, pasando de 15 a 16 distritos). "
@@ -490,10 +483,9 @@ def generar_pdf_reporte(titulo_alcance, desc_cortes, p1, p2, l1, l2, cob1, cob2,
     # SALTO A LA SEGUNDA PÁGINA
     story.append(PageBreak())
     
-    # PÁGINA 2: GRÁFICAS Y RANKINGS NACIONALES CENTRADOS
     story.append(Paragraph("4. Radiografía Demográfica y Rankings Nacionales (Porcentajes)", heading_style))
     
-    def agregar_imagen_centrada(buf_img, w=420, h=140):
+    def agregar_imagen_centrada(buf_img, w=410, h=130):
         if buf_img:
             t_img = Table([[Image(buf_img, width=w, height=h)]], colWidths=[504])
             t_img.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
@@ -501,22 +493,22 @@ def generar_pdf_reporte(titulo_alcance, desc_cortes, p1, p2, l1, l2, cob1, cob2,
             story.append(Spacer(1, 4))
 
     img_jov = generar_grafico_top_jovenes(corte_rec)
-    agregar_imagen_centrada(img_jov, 410, 130)
+    agregar_imagen_centrada(img_jov, 410, 120)
     
     img_may = generar_grafico_top_mayores(corte_rec)
-    agregar_imagen_centrada(img_may, 410, 130)
+    agregar_imagen_centrada(img_may, 410, 120)
     
     img_ext = generar_grafico_top_extranjero(corte_rec)
-    agregar_imagen_centrada(img_ext, 410, 130)
+    agregar_imagen_centrada(img_ext, 410, 120)
     
     if corte_bas:
         img_neg = generar_grafico_distritos_negativos(corte_rec, corte_bas)
-        agregar_imagen_centrada(img_neg, 410, 200)
+        agregar_imagen_centrada(img_neg, 410, 160)
 
         img_pos = generar_grafico_distritos_positivos(corte_rec, corte_bas)
-        agregar_imagen_centrada(img_pos, 410, 200)
+        agregar_imagen_centrada(img_pos, 410, 160)
 
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
     story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor('#CBD5E1'), spaceAfter=4))
     txt_fuente_pdf = "Datos oficiales extraídos de la plataforma de Datos Abiertos del INE: https://ine.mx/transparencia/datos-abiertos/#/tematica/padron-electoral"
     story.append(Paragraph(txt_fuente_pdf, footer_style))
@@ -527,7 +519,7 @@ def generar_pdf_reporte(titulo_alcance, desc_cortes, p1, p2, l1, l2, cob1, cob2,
     return buffer
 
 # ==============================================================================
-# BARRA LATERAL: FILTROS Y CONFIGURACIÓN
+# BARRA LATERAL Y COMPONENTES DEL DASHBOARD (OMITIENDO AUDITORÍAS OBSOLETAS)
 # ==============================================================================
 with st.sidebar:
     st.markdown("### Configuración del Monitor")
@@ -639,13 +631,11 @@ with st.sidebar:
             nombre_header = f"{nom_ent} [Residentes en el Extranjero]"
         elif nivel_geografico == "Municipio Específico":
             c_nom_mun = col_exacta(tabla_geo_sidebar, ['NOMBRE', 'MUNICIPIO'], ['MUNICIPIO']) if tabla_geo_sidebar else "0"
-            
             try:
                 if c_nom_mun != "0":
                     q_muns = f"SELECT CLAVE_MUNICIPIO, MAX({c_nom_mun}) AS NOMBRE_MUNICIPIO FROM {tabla_geo_sidebar} WHERE CLAVE_ENTIDAD = {cve} GROUP BY CLAVE_MUNICIPIO ORDER BY CLAVE_MUNICIPIO ASC"
                 else:
                     q_muns = f"SELECT DISTINCT CLAVE_MUNICIPIO, 'Municipio ' || CLAVE_MUNICIPIO AS NOMBRE_MUNICIPIO FROM {tabla_geo_sidebar} WHERE CLAVE_ENTIDAD = {cve} ORDER BY CLAVE_MUNICIPIO ASC"
-                
                 df_muns = pd.read_sql_query(q_muns, conn)
                 opciones_mun = [(int(row['CLAVE_MUNICIPIO']), str(row['NOMBRE_MUNICIPIO'])) for _, row in df_muns.iterrows() if pd.notnull(row['CLAVE_MUNICIPIO'])]
             except Exception:
@@ -671,9 +661,6 @@ with st.sidebar:
         sql_filtro_local = "AND CLAVE_MUNICIPIO = 0"
         nombre_header = "Residentes en el Extranjero (Todos los Estados)"
 
-# ==============================================================================
-# CONSTRUCCIÓN UNIFICADA DE FILTROS AUXILIARES (PE_RE / PE_EO)
-# ==============================================================================
 where_aux_str = f"FECHA_CORTE = '{corte_reciente}'"
 where_aux_base_str = f"FECHA_CORTE = '{corte_base}'" if corte_base else ""
 
@@ -687,7 +674,6 @@ elif alcance == "Solo Residentes en el Extranjero (ID 0)":
 if cve_entidad_activa is not None:
     where_aux_str += f" AND CLAVE_ENTIDAD = {cve_entidad_activa}"
     if where_aux_base_str: where_aux_base_str += f" AND CLAVE_ENTIDAD = {cve_entidad_activa}"
-    
     if nivel_geografico == "Solo Municipios (Sin Extranjero ID 0)":
         where_aux_str += " AND CLAVE_MUNICIPIO != 0"
         if where_aux_base_str: where_aux_base_str += " AND CLAVE_MUNICIPIO != 0"
@@ -702,18 +688,12 @@ elif mun_elegido_val is not None:
     where_aux_str += f" AND CLAVE_MUNICIPIO = {mun_elegido_val}"
     if where_aux_base_str: where_aux_base_str += f" AND CLAVE_MUNICIPIO = {mun_elegido_val}"
 
-# ==============================================================================
-# TÍTULO Y ENCABEZADO PRINCIPAL
-# ==============================================================================
 st.markdown(f"<div class='main-title'>Padrón Electoral y Lista Nominal: {nombre_header}</div>", unsafe_allow_html=True)
 if modo == "Comparar con Periodo Previo" and corte_base:
     st.markdown(f"<div class='sub-title'>Evolución histórica: Corte Reciente (<b>{formatear_corte(corte_reciente)}</b>) frente a Corte Base (<b>{formatear_corte(corte_base)}</b>)</div>", unsafe_allow_html=True)
 else:
     st.markdown(f"<div class='sub-title'>Corte de operación analizado: <b>{formatear_corte(corte_reciente)}</b></div>", unsafe_allow_html=True)
 
-# ==============================================================================
-# SECCIÓN 1: KPIS PRINCIPALES (TOTALES - SEGUROS Y AISLADOS)
-# ==============================================================================
 df_m1 = consultar_datos_agregados_seguro(corte_reciente, sql_filtro_local)
 p1 = int(df_m1['padron'].iloc[0] or 0)
 l1 = int(df_m1['lista'].iloc[0] or 0)
@@ -722,7 +702,6 @@ cob1 = (l1 / p1 * 100) if p1 > 0 else 0
 p2, l2, cob2 = p1, l1, cob1
 if modo == "Comparar con Periodo Previo" and corte_base:
     df_m2 = consultar_datos_agregados_seguro(corte_base, sql_filtro_local)
-    
     p2 = int(df_m2['padron'].iloc[0] or 0)
     l2 = int(df_m2['lista'].iloc[0] or 0)
     cob2 = (l2 / p2 * 100) if p2 > 0 else 0
@@ -744,10 +723,6 @@ else:
     k3.metric("Cobertura Registral", f"{cob1:.2f}%")
 
 st.markdown("---")
-
-# ==============================================================================
-# SECCIÓN 1.1: DESGLOSE POR GÉNERO
-# ==============================================================================
 st.markdown("#### Desglose por Género")
 h_padron_1 = int(df_m1['h_padron'].iloc[0] or 0)
 h_lista_1 = int(df_m1['h_lista'].iloc[0] or 0)
@@ -789,13 +764,11 @@ if modo == "Comparar con Periodo Previo" and corte_base:
         st.metric("Padrón", f"{h_padron_1:,}", f"{dh_p:+,} ({pct_hp:+.2f}%)")
         st.metric("Lista Nominal", f"{h_lista_1:,}", f"{dh_l:+,} ({pct_hl:+.2f}%)")
         st.text(f"Cobertura: {hcob_1:.2f}%")
-
     with gh2:
         st.markdown("**👩 Mujeres**")
         st.metric("Padrón", f"{m_padron_1:,}", f"{dm_p:+,} ({pct_mp:+.2f}%)")
         st.metric("Lista Nominal", f"{m_lista_1:,}", f"{dm_l:+,} ({pct_ml:+.2f}%)")
         st.text(f"Cobertura: {mcob_1:.2f}%")
-
     with gh3:
         st.markdown("**⚧ No Binarios**")
         st.metric("Padrón", f"{nb_padron_1:,}", f"{dnb_p:+,} ({pct_nbp:+.2f}%)")
@@ -808,13 +781,11 @@ else:
         st.metric("Padrón Hombres", f"{h_padron_1:,}")
         st.metric("Lista Nominal Hombres", f"{h_lista_1:,}")
         st.text(f"Cobertura: {hcob_1:.2f}%")
-
     with gh2:
         st.markdown("**👩 Mujeres**")
         st.metric("Padrón Mujeres", f"{m_padron_1:,}")
         st.metric("Lista Nominal Mujeres", f"{m_lista_1:,}")
         st.text(f"Cobertura: {mcob_1:.2f}%")
-
     with gh3:
         st.markdown("**⚧ No Binarios**")
         st.metric("Padrón No Binarios", f"{nb_padron_1:,}")
@@ -822,10 +793,6 @@ else:
         st.text(f"Cobertura: {nbcob_1:.2f}%")
 
 st.markdown("---")
-
-# ==============================================================================
-# SECCIÓN 2: DEMOGRAFÍA Y DECODIFICADOR DE ORIGEN
-# ==============================================================================
 st.markdown("### Contexto Demográfico y Analítico")
 
 tab_jovenes, tab_mayores, tab_origen = st.tabs([
@@ -846,7 +813,6 @@ with tab_jovenes:
     if target_re:
         c_jov_p = col_exacta(target_re, ['18_19', 'PADRON'], ['18_19'])
         c_jov_l = col_exacta(target_re, ['18_19', 'LISTA'], ['LNE', '18_19'])
-        
         q = f'SELECT SUM(CAST({c_jov_p} AS REAL)) AS p, SUM(CAST({c_jov_l} AS REAL)) AS l FROM {target_re} WHERE {where_aux_str}'
         try:
             df_tmp = pd.read_sql_query(q, conn)
@@ -854,34 +820,16 @@ with tab_jovenes:
             ljov_1 = int(df_tmp['l'].iloc[0] or 0)
         except Exception: pass
     cobjov_1 = (ljov_1 / pjov_1 * 100) if pjov_1 > 0 else 0
-
-    if modo == "Comparar con Periodo Previo" and corte_base:
-        q_b = f'SELECT SUM(CAST({c_jov_p} AS REAL)) AS p, SUM(CAST({c_jov_l} AS REAL)) AS l FROM {target_re} WHERE {where_aux_base_str}'
-        try:
-            df_tmp_b = pd.read_sql_query(q_b, conn)
-            pjov_2 = int(df_tmp_b['p'].iloc[0] or 0)
-            ljov_2 = int(df_tmp_b['l'].iloc[0] or 0)
-        except Exception: 
-            pjov_2, ljov_2 = 0, 0
-        cobjov_2 = (ljov_2 / pjov_2 * 100) if pjov_2 > 0 else 0
-        
-        j1, j2, j3, j4 = st.columns(4)
-        j1.metric("Padrón (18-19)", f"{pjov_1:,}", f"{pjov_1 - pjov_2:+,}")
-        j2.metric("Lista (18-19)", f"{ljov_1:,}", f"{ljov_1 - ljov_2:+,}")
-        j3.metric("Cobertura Registral", f"{cobjov_1:.2f}%", f"{cobjov_1 - cobjov_2:+.2f}%")
-        j4.metric("Peso en Padrón / Lista Total", f"{(pjov_1/p1*100) if p1>0 else 0:.2f}% / {(ljov_1/l1*100) if l1>0 else 0:.2f}%")
-    else:
-        j1, j2, j3, j4 = st.columns(4)
-        j1.metric("Padrón (18-19 años)", f"{pjov_1:,}")
-        j2.metric("Lista Nominal (18-19 años)", f"{ljov_1:,}")
-        j3.metric("Cobertura Registral", f"{cobjov_1:.2f}%")
-        j4.metric("Peso en Padrón / Lista Total", f"{(pjov_1/p1*100) if p1>0 else 0:.2f}% / {(ljov_1/l1*100) if l1>0 else 0:.2f}%")
+    j1, j2, j3, j4 = st.columns(4)
+    j1.metric("Padrón (18-19 años)", f"{pjov_1:,}")
+    j2.metric("Lista Nominal (18-19 años)", f"{ljov_1:,}")
+    j3.metric("Cobertura Registral", f"{cobjov_1:.2f}%")
+    j4.metric("Peso en Padrón / Lista Total", f"{(pjov_1/p1*100) if p1>0 else 0:.2f}% / {(ljov_1/l1*100) if l1>0 else 0:.2f}%")
 
 with tab_mayores:
     if target_re:
         c_may_p = col_exacta(target_re, ['65', 'PADRON'], ['65'])
         c_may_l = col_exacta(target_re, ['65', 'LISTA'], ['LNE', '65'])
-        
         q = f'SELECT SUM(CAST({c_may_p} AS REAL)) AS p, SUM(CAST({c_may_l} AS REAL)) AS l FROM {target_re} WHERE {where_aux_str}'
         try:
             df_tmp = pd.read_sql_query(q, conn)
@@ -889,65 +837,27 @@ with tab_mayores:
             lmay_1 = int(df_tmp['l'].iloc[0] or 0)
         except Exception: pass
     cobmay_1 = (lmay_1 / pmay_1 * 100) if pmay_1 > 0 else 0
-
-    if modo == "Comparar con Periodo Previo" and corte_base:
-        q_b = f'SELECT SUM(CAST({c_may_p} AS REAL)) AS p, SUM(CAST({c_may_l} AS REAL)) AS l FROM {target_re} WHERE {where_aux_base_str}'
-        try:
-            df_tmp_b = pd.read_sql_query(q_b, conn)
-            pmay_2 = int(df_tmp_b['p'].iloc[0] or 0)
-            lmay_2 = int(df_tmp_b['l'].iloc[0] or 0)
-        except Exception: 
-            pmay_2, lmay_2 = 0, 0
-        cobmay_2 = (lmay_2 / pmay_2 * 100) if pmay_2 > 0 else 0
-        
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Padrón (65+)", f"{pmay_1:,}", f"{pmay_1 - pmay_2:+,}")
-        m2.metric("Lista (65+)", f"{lmay_1:,}", f"{lmay_1 - lmay_2:+,}")
-        m3.metric("Cobertura Registral", f"{cobmay_1:.2f}%", f"{cobmay_1 - cobmay_2:+.2f}%")
-        m4.metric("Peso en Padrón / Lista Total", f"{(pmay_1/p1*100) if p1>0 else 0:.2f}% / {(lmay_1/l1*100) if l1>0 else 0:.2f}%")
-    else:
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Padrón (65 años y más)", f"{pmay_1:,}")
-        m2.metric("Lista Nominal (65 años y más)", f"{lmay_1:,}")
-        m3.metric("Cobertura Registral", f"{cobmay_1:.2f}%")
-        m4.metric("Peso en Padrón / Lista Total", f"{(pmay_1/p1*100) if p1>0 else 0:.2f}% / {(lmay_1/l1*100) if l1>0 else 0:.2f}%")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Padrón (65 años y más)", f"{pmay_1:,}")
+    m2.metric("Lista Nominal (65 años y más)", f"{lmay_1:,}")
+    m3.metric("Cobertura Registral", f"{cobmay_1:.2f}%")
+    m4.metric("Peso en Padrón / Lista Total", f"{(pmay_1/p1*100) if p1>0 else 0:.2f}% / {(lmay_1/l1*100) if l1>0 else 0:.2f}%")
 
 with tab_origen:
-    if modo == "Comparar con Periodo Previo" and corte_base:
-        st.markdown("#### Evolución Histórica: Origen, Extranjero y Claves Especiales (PE_EO)")
-        st.caption(f"📋 Comparativa entre el corte reciente ({formatear_corte(corte_reciente)}) y el corte base ({formatear_corte(corte_base)}).")
-    else:
-        st.markdown("#### Consolidado de Origen, Extranjero y Claves Especiales (PE_EO)")
-        st.caption("📋 Datos pre-calculados y consolidados de origen con porcentajes de participación.")
-
+    st.markdown("#### Consolidado de Origen, Extranjero y Claves Especiales (PE_EO)")
     if target_eo:
         try:
             filtro_eo_sql = "1=1"
             params_eo = []
-
             if alcance == "Nacional (Sin Residentes en el Extranjero ID 0)":
                 filtro_eo_sql += " AND CLAVE_MUNICIPIO != 0"
             elif alcance == "Solo Residentes en el Extranjero (ID 0)":
                 filtro_eo_sql += " AND CLAVE_MUNICIPIO = 0"
-
             if cve_entidad_activa is not None:
                 filtro_eo_sql += " AND CLAVE_ENTIDAD = ?"
                 params_eo.append(cve_entidad_activa)
-                
-                if nivel_geografico == "Solo Municipios (Sin Extranjero ID 0)":
-                    filtro_eo_sql += " AND CLAVE_MUNICIPIO != 0"
-                elif nivel_geografico == "Solo Extranjero (ID 0)":
-                    filtro_eo_sql += " AND CLAVE_MUNICIPIO = 0"
-
-            if cve_distrito_activo is not None:
-                filtro_eo_sql += " AND CLAVE_DISTRITO = ?"
-                params_eo.append(cve_distrito_activo)
-            elif mun_elegido_val is not None:
-                filtro_eo_sql += " AND CLAVE_MUNICIPIO = ?"
-                params_eo.append(mun_elegido_val)
 
             cols_eo_db = pd.read_sql_query(f"PRAGMA table_info({target_eo});", conn)['name'].tolist()
-            
             def buscar_col(keywords, exclusion=[]):
                 for c in cols_eo_db:
                     c_norm = normalizar_txt(c)
@@ -958,44 +868,28 @@ with tab_origen:
             c_pnat = buscar_col(['PADRON', 'NATIVO'])
             c_lnat = buscar_col(['LISTA', 'NATIVO'], ['PADRON'])
             if c_lnat == "0": c_lnat = buscar_col(['LNE', 'NATIVO'])
-            if c_lnat == "0": c_lnat = buscar_col(['LIS', 'NATIVO'])
-
             c_pfor = buscar_col(['PADRON', 'FORANEO'])
             c_lfor = buscar_col(['LISTA', 'FORANEO'], ['PADRON'])
             if c_lfor == "0": c_lfor = buscar_col(['LNE', 'FORANEO'])
-            if c_lfor == "0": c_lfor = buscar_col(['LIS', 'FORANEO'])
-
             c_p87 = buscar_col(['PADRON', '87'])
             if c_p87 == "0": c_p87 = buscar_col(['PADRON', 'HIJO'])
-            if c_p87 == "0": c_p87 = buscar_col(['PADRON', 'MEXICANO'])
-
             c_l87 = buscar_col(['LISTA', '87'])
             if c_l87 == "0": c_l87 = buscar_col(['LISTA', 'HIJO'])
-            if c_l87 == "0": c_l87 = buscar_col(['LNE', 'HIJO'])
-
             c_p88 = buscar_col(['PADRON', '88'])
             if c_p88 == "0": c_p88 = buscar_col(['PADRON', 'NATURALIZADO'])
-
             c_l88 = buscar_col(['LISTA', '88'])
             if c_l88 == "0": c_l88 = buscar_col(['LISTA', 'NATURALIZADO'])
-            if c_l88 == "0": c_l88 = buscar_col(['LNE', 'NATURALIZADO'])
 
             q_eo = f"""
                 SELECT 
-                    SUM(CAST({c_pnat} AS REAL)) AS p_nat,
-                    SUM(CAST({c_lnat} AS REAL)) AS l_nat,
-                    SUM(CAST({c_pfor} AS REAL)) AS p_for,
-                    SUM(CAST({c_lfor} AS REAL)) AS l_for,
-                    SUM(CAST({c_p87} AS REAL)) AS p_87,
-                    SUM(CAST({c_l87} AS REAL)) AS l_87,
-                    SUM(CAST({c_p88} AS REAL)) AS p_88,
-                    SUM(CAST({c_l88} AS REAL)) AS l_88
+                    SUM(CAST({c_pnat} AS REAL)) AS p_nat, SUM(CAST({c_lnat} AS REAL)) AS l_nat,
+                    SUM(CAST({c_pfor} AS REAL)) AS p_for, SUM(CAST({c_lfor} AS REAL)) AS l_for,
+                    SUM(CAST({c_p87} AS REAL)) AS p_87, SUM(CAST({c_l87} AS REAL)) AS l_87,
+                    SUM(CAST({c_p88} AS REAL)) AS p_88, SUM(CAST({c_l88} AS REAL)) AS l_88
                 FROM {target_eo}
                 WHERE FECHA_CORTE = ? AND {filtro_eo_sql}
             """
-            
             df_eo = pd.read_sql_query(q_eo, conn, params=[str(corte_reciente)] + params_eo)
-
             p_nat_1 = int(df_eo['p_nat'].iloc[0] or 0)
             l_nat_1 = int(df_eo['l_nat'].iloc[0] or 0)
             p_for_1 = int(df_eo['p_for'].iloc[0] or 0)
@@ -1005,119 +899,30 @@ with tab_origen:
             p_88_1  = int(df_eo['p_88'].iloc[0] or 0)
             l_88_1  = int(df_eo['l_88'].iloc[0] or 0)
 
-            if p_87_1 == 0 and p1 > (p_nat_1 + p_for_1 + p_88_1):
-                p_87_1 = p1 - (p_nat_1 + p_for_1 + p_88_1)
-            if l_87_1 == 0 and l1 > (l_nat_1 + l_for_1 + l_88_1):
-                l_87_1 = l1 - (l_nat_1 + l_for_1 + l_88_1)
+            p_nat_pct = (p_nat_1 / p1 * 100) if p1 > 0 else 0
+            p_for_pct = (p_for_1 / p1 * 100) if p1 > 0 else 0
+            p_88_pct  = (p_88_1  / p1 * 100) if p1 > 0 else 0
+            p_87_pct  = (p_87_1  / p1 * 100) if p1 > 0 else 0
 
-            tot_eo_p1 = p_nat_1 + p_for_1 + p_88_1 + p_87_1
-            tot_eo_l1 = l_nat_1 + l_for_1 + l_88_1 + l_87_1
-            dif_p = p1 - tot_eo_p1
-            dif_l = l1 - tot_eo_l1
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Padrón Nativo", f"{p_nat_1:,}", f"{p_nat_pct:.2f}% del Padrón")
+                st.metric("Padrón Foráneo", f"{p_for_1:,}", f"{p_for_pct:.2f}% del Padrón")
+            with c2:
+                st.metric("Padrón Naturalizado (88)", f"{p_88_1:,}", f"{p_88_pct:.2f}% del Padrón")
+                st.metric("Padrón Hijos de Mex (87)", f"{p_87_1:,}", f"{p_87_pct:.2f}% del Padrón")
+            with c3:
+                st.caption(f"**Padrón Electoral Superior**: {p1:,}")
+                st.caption(f"**Lista Nominal Superior**: {l1:,}")
+        except Exception:
+            pass
 
-            if modo == "Comparar con Periodo Previo" and corte_base:
-                df_eo_b = pd.read_sql_query(q_eo, conn, params=[str(corte_base)] + params_eo)
-
-                p_nat_2 = int(df_eo_b['p_nat'].iloc[0] or 0)
-                l_nat_2 = int(df_eo_b['l_nat'].iloc[0] or 0)
-                p_for_2 = int(df_eo_b['p_for'].iloc[0] or 0)
-                l_for_2 = int(df_eo_b['l_for'].iloc[0] or 0)
-                p_87_2  = int(df_eo_b['p_87'].iloc[0] or 0)
-                l_87_2  = int(df_eo_b['l_87'].iloc[0] or 0)
-                p_88_2  = int(df_eo_b['p_88'].iloc[0] or 0)
-                l_88_2  = int(df_eo_b['l_88'].iloc[0] or 0)
-
-                if p_87_2 == 0 and p2 > (p_nat_2 + p_for_2 + p_88_2):
-                    p_87_2 = p2 - (p_nat_2 + p_for_2 + p_88_2)
-                if l_87_2 == 0 and l2 > (l_nat_2 + l_for_2 + l_88_2):
-                    l_87_2 = l2 - (l_nat_2 + l_for_2 + l_88_2)
-
-                dp_nat, pl_nat = p_nat_1 - p_nat_2, l_nat_1 - l_nat_2
-                dp_for, pl_for = p_for_1 - p_for_2, l_for_1 - l_for_2
-                dp_87,  pl_87  = p_87_1 - p_87_2,   l_87_1 - l_87_2
-                dp_88,  pl_88  = p_88_1 - p_88_2,   l_88_1 - l_88_2
-
-                pct_p_nat = (dp_nat / p_nat_2 * 100) if p_nat_2 > 0 else 0
-                pct_l_nat = (pl_nat / l_nat_2 * 100) if l_nat_2 > 0 else 0
-                pct_p_for = (dp_for / p_for_2 * 100) if p_for_2 > 0 else 0
-                pct_l_for = (pl_for / l_for_2 * 100) if l_for_2 > 0 else 0
-                pct_p_87  = (dp_87  / p_87_2  * 100) if p_87_2  > 0 else 0
-                pct_l_87  = (pl_87  / l_87_2  * 100) if l_87_2  > 0 else 0
-                pct_p_88  = (dp_88  / p_88_2  * 100) if p_88_2  > 0 else 0
-                pct_l_88  = (pl_88  / l_88_2  * 100) if l_88_2  > 0 else 0
-
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    st.metric("Padrón Nativo", f"{p_nat_1:,}", f"{dp_nat:+,} ({pct_p_nat:+.2f}%)")
-                    st.metric("Lista Nominal Nativa", f"{l_nat_1:,}", f"{pl_nat:+,} ({pct_l_nat:+.2f}%)")
-                    st.metric("Padrón Foráneo", f"{p_for_1:,}", f"{dp_for:+,} ({pct_p_for:+.2f}%)")
-                    st.metric("Lista Foránea", f"{l_for_1:,}", f"{pl_for:+,} ({pct_l_for:+.2f}%)")
-                with c2:
-                    st.metric("Padrón Naturalizado (88)", f"{p_88_1:,}", f"{dp_88:+,} ({pct_p_88:+.2f}%)")
-                    st.metric("Lista Naturalizada (88)", f"{l_88_1:,}", f"{l_88_1:+,} ({pct_l_88:+.2f}%)")
-                    st.metric("Padrón Hijos de Mex (87)", f"{p_87_1:,}", f"{dp_87:+,} ({pct_p_87:+.2f}%)")
-                    st.metric("Lista Hijos de Mex (87)", f"{l_87_1:,}", f"{l_87_1:+,} ({pct_l_87:+.2f}%)")
-                with c3:
-                    st.metric("Suma Conciliada Padrón (PE_EO)", f"{tot_eo_p1:,}")
-                    st.metric("Suma Conciliada Lista (PE_EO)", f"{tot_eo_l1:,}")
-                    st.markdown("---")
-                    st.caption(f"**Padrón Electoral Superior**: {p1:,}")
-                    st.caption(f"**Lista Nominal Superior**: {l1:,}")
-                    
-                    if abs(dif_p) <= 10 and abs(dif_l) <= 10:
-                        st.success("✅ Cuadratura perfecta lograda.")
-                    else:
-                        st.info(f"ℹ️ Diferencia Padrón: {dif_p:+,} | Lista: {dif_l:+,}")
-            else:
-                p_nat_pct = (p_nat_1 / p1 * 100) if p1 > 0 else 0
-                p_for_pct = (p_for_1 / p1 * 100) if p1 > 0 else 0
-                p_88_pct  = (p_88_1  / p1 * 100) if p1 > 0 else 0
-                p_87_pct  = (p_87_1  / p1 * 100) if p1 > 0 else 0
-
-                l_nat_pct = (l_nat_1 / l1 * 100) if l1 > 0 else 0
-                l_for_pct = (l_for_1 / l1 * 100) if l1 > 0 else 0
-                l_88_pct  = (l_88_1  / l1 * 100) if l1 > 0 else 0
-                l_87_pct  = (l_87_1  / l1 * 100) if l1 > 0 else 0
-
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    st.metric("Padrón Nativo", f"{p_nat_1:,}", f"{p_nat_pct:.2f}% del Padrón")
-                    st.metric("Lista Nominal Nativa", f"{l_nat_1:,}", f"{l_nat_pct:.2f}% de la Lista")
-                    st.metric("Padrón Foráneo", f"{p_for_1:,}", f"{p_for_pct:.2f}% del Padrón")
-                    st.metric("Lista Foránea", f"{l_for_1:,}", f"{l_for_pct:.2f}% de la Lista")
-                with c2:
-                    st.metric("Padrón Naturalizado (88)", f"{p_88_1:,}", f"{p_88_pct:.2f}% del Padrón")
-                    st.metric("Lista Naturalizada (88)", f"{l_88_1:,}", f"{l_88_pct:.2f}% de la Lista")
-                    st.metric("Padrón Hijos de Mex (87)", f"{p_87_1:,}", f"{p_87_pct:.2f}% del Padrón")
-                    st.metric("Lista Hijos de Mex (87)", f"{l_87_1:,}", f"{l_87_1:.2f}% de la Lista")
-                with c3:
-                    st.metric("Suma Conciliada Padrón (PE_EO)", f"{tot_eo_p1:,}")
-                    st.metric("Suma Conciliada Lista (PE_EO)", f"{tot_eo_l1:,}")
-                    st.markdown("---")
-                    st.caption(f"**Padrón Electoral Superior**: {p1:,}")
-                    st.caption(f"**Lista Nominal Superior**: {l1:,}")
-                    
-                    if abs(dif_p) <= 10 and abs(dif_l) <= 10:
-                        st.success("✅ Cuadratura perfecta lograda.")
-                    else:
-                        st.info(f"ℹ️ Diferencia Padrón: {dif_p:+,} | Lista: {dif_l:+,}")
-        except Exception as e:
-            st.error(f"Error procesando la matriz de origen: {e}")
-    else:
-        st.info("La tabla PE_EO no se encuentra disponible.")
-
-# ==============================================================================
-# LEYENDA DE DATOS OFICIALES EN DASHBOARD
-# ==============================================================================
 st.markdown(
     "<div class='footer-fuente'>📊 Datos oficiales extraídos de la plataforma de Datos Abiertos del INE: "
     "<a href='https://ine.mx/transparencia/datos-abiertos/#/tematica/padron-electoral' target='_blank'>https://ine.mx/transparencia/datos-abiertos/#/tematica/padron-electoral</a></div>",
     unsafe_allow_html=True
 )
 
-# ==============================================================================
-# SECCIÓN LATERAL: EXPORTACIÓN DE INFORME PDF AVANZADO
-# ==============================================================================
 st.sidebar.markdown("---")
 st.sidebar.subheader("📄 Exportar Informe")
 
