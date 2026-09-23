@@ -13,7 +13,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 # ==============================================================================
-# EXTRACCIÓN AUTOMÁTICA DE LA BASE DE DATOS (.7Z) EN LA NUBE
+# EXTRACCIÓN AUTOMÁTICA Y SEGURA DE LA BASE DE DATOS (.7Z)
 # ==============================================================================
 DIR_RAIZ = Path(__file__).resolve().parent
 DB_PATH = DIR_RAIZ / "derfe_web.db"
@@ -21,8 +21,11 @@ ARCHIVE_7Z_PATH = DIR_RAIZ / "derfe_web.7z"
 LOGO_PATH = DIR_RAIZ / "logo_ine.png"
 
 if not DB_PATH.exists() and ARCHIVE_7Z_PATH.exists():
-    with py7zr.SevenZipFile(ARCHIVE_7Z_PATH, mode='r') as z:
-        z.extractall(path=DIR_RAIZ)
+    try:
+        with py7zr.SevenZipFile(ARCHIVE_7Z_PATH, mode='r') as z:
+            z.extractall(path=DIR_RAIZ)
+    except Exception as e:
+        st.error(f"Error al descomprimir derfe_web.7z: {e}")
 
 # ==============================================================================
 # CONFIGURACIÓN DE PÁGINA Y ESTILO RESPONSIVO
@@ -37,7 +40,7 @@ st.set_page_config(
 @st.cache_resource
 def get_conn():
     if not DB_PATH.exists():
-        st.error(f"⚠️ Base de datos no encontrada en: {DB_PATH}. Asegúrate de incluir 'derfe_web.7z' en el repositorio.")
+        st.error(f"⚠️ Base de datos no encontrada en: {DB_PATH}. Asegúrate de que 'derfe_web.7z' esté cargado en el repositorio.")
         st.stop()
     return sqlite3.connect(str(DB_PATH), check_same_thread=False)
 
@@ -519,7 +522,7 @@ def generar_pdf_reporte(titulo_alcance, desc_cortes, p1, p2, l1, l2, cob1, cob2,
     return buffer
 
 # ==============================================================================
-# BARRA LATERAL Y COMPONENTES DEL DASHBOARD (OMITIENDO AUDITORÍAS OBSOLETAS)
+# BARRA LATERAL Y COMPONENTES DEL DASHBOARD
 # ==============================================================================
 with st.sidebar:
     st.markdown("### Configuración del Monitor")
