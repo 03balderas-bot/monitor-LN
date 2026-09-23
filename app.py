@@ -186,19 +186,20 @@ def consultar_datos_agregados_seguro(corte, condicion_sql):
         return pd.DataFrame([{'padron':0, 'lista':0, 'h_padron':0, 'h_lista':0, 'm_padron':0, 'm_lista':0, 'nb_padron':0, 'nb_lista':0}])
 
 # ==============================================================================
-# FUNCIONES DE GRÁFICAS BLINDADAS Y ROBUSTAS (USANDO PE_SEX COMO RESPALDO)
+# FUNCIONES DE GRÁFICAS CON NOMBRES REALES DE COLUMNAS (PE_JOVENES_18_19, etc.)
 # ==============================================================================
 def generar_grafico_top_jovenes(corte):
     try:
         tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)['name'].tolist()
         if 'PE_RE' in tables:
-            cols_db = pd.read_sql_query("PRAGMA table_info(PE_RE);", conn)['name'].tolist()
-            col_sel = next((c for c in cols_db if ('18' in c or '19' in c) and 'PADRON' in c.upper()), None)
+            c_jov = col_exacta('PE_RE', ['PE', 'JOVENES', '18_19'], ['JOVENES', '18_19'])
+            if c_jov == "0":
+                c_jov = col_exacta('PE_RE', ['18_19'])
             
-            if col_sel:
+            if c_jov != "0":
                 q = f"""
                     SELECT CLAVE_ENTIDAD, 
-                           (SUM(CAST("{col_sel}" AS REAL)) * 100.0 / 
+                           (SUM(CAST({c_jov} AS REAL)) * 100.0 / 
                             (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX S WHERE S.FECHA_CORTE = PE_RE.FECHA_CORTE AND S.CLAVE_ENTIDAD = PE_RE.CLAVE_ENTIDAD)) AS pct_jovenes
                     FROM PE_RE
                     WHERE FECHA_CORTE = ?
@@ -221,27 +222,6 @@ def generar_grafico_top_jovenes(corte):
                     plt.close()
                     buf.seek(0)
                     return buf
-        
-        # Respaldo general usando PE_SEX si PE_RE no está disponible
-        q_alt = """
-            SELECT CLAVE_ENTIDAD, (SUM(CAST("PADRON ELECTORAL" AS REAL)) * 100.0 / (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX WHERE FECHA_CORTE = ?)) as pct
-            FROM PE_SEX WHERE FECHA_CORTE = ? GROUP BY CLAVE_ENTIDAD ORDER BY pct DESC LIMIT 5
-        """
-        df_alt = pd.read_sql_query(q_alt, conn, params=[corte, corte])
-        if not df_alt.empty:
-            df_alt['ENTIDAD'] = df_alt['CLAVE_ENTIDAD'].map(CATALOGO_ENTIDADES)
-            plt.figure(figsize=(6.5, 2.2))
-            plt.barh(df_alt['ENTIDAD'][::-1], df_alt['pct'][::-1], color='#10B981')
-            plt.title(f"Top 5 Entidades con Mayor Padrón Electoral - {formatear_corte(corte)}", fontsize=9, fontweight='bold', color='#4A2E7A')
-            plt.xlabel("Participación en el Padrón Nacional (%)", fontsize=8)
-            plt.xticks(fontsize=7.5)
-            plt.yticks(fontsize=8)
-            plt.tight_layout()
-            buf = BytesIO()
-            plt.savefig(buf, format='png', dpi=200)
-            plt.close()
-            buf.seek(0)
-            return buf
     except Exception:
         pass
     return None
@@ -250,13 +230,14 @@ def generar_grafico_top_mayores(corte):
     try:
         tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)['name'].tolist()
         if 'PE_RE' in tables:
-            cols_db = pd.read_sql_query("PRAGMA table_info(PE_RE);", conn)['name'].tolist()
-            col_sel = next((c for c in cols_db if '65' in c and 'PADRON' in c.upper()), None)
+            c_may = col_exacta('PE_RE', ['PE', 'MAS', '65'], ['MAS', '65'])
+            if c_may == "0":
+                c_may = col_exacta('PE_RE', ['65'])
             
-            if col_sel:
+            if c_may != "0":
                 q = f"""
                     SELECT CLAVE_ENTIDAD, 
-                           (SUM(CAST("{col_sel}" AS REAL)) * 100.0 / 
+                           (SUM(CAST({c_may} AS REAL)) * 100.0 / 
                             (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX S WHERE S.FECHA_CORTE = PE_RE.FECHA_CORTE AND S.CLAVE_ENTIDAD = PE_RE.CLAVE_ENTIDAD)) AS pct_mayores
                     FROM PE_RE
                     WHERE FECHA_CORTE = ?
@@ -279,26 +260,6 @@ def generar_grafico_top_mayores(corte):
                     plt.close()
                     buf.seek(0)
                     return buf
-
-        q_alt = """
-            SELECT CLAVE_ENTIDAD, (SUM(CAST("LISTA NOMINAL" AS REAL)) * 100.0 / SUM(CAST("PADRON ELECTORAL" AS REAL))) as cob
-            FROM PE_SEX WHERE FECHA_CORTE = ? GROUP BY CLAVE_ENTIDAD ORDER BY cob DESC LIMIT 5
-        """
-        df_alt = pd.read_sql_query(q_alt, conn, params=[corte])
-        if not df_alt.empty:
-            df_alt['ENTIDAD'] = df_alt['CLAVE_ENTIDAD'].map(CATALOGO_ENTIDADES)
-            plt.figure(figsize=(6.5, 2.2))
-            plt.barh(df_alt['ENTIDAD'][::-1], df_alt['cob'][::-1], color='#F59E0B')
-            plt.title(f"Top 5 Entidades con Mayor Cobertura Registral (%) - {formatear_corte(corte)}", fontsize=9, fontweight='bold', color='#4A2E7A')
-            plt.xlabel("Cobertura Registral (%)", fontsize=8)
-            plt.xticks(fontsize=7.5)
-            plt.yticks(fontsize=8)
-            plt.tight_layout()
-            buf = BytesIO()
-            plt.savefig(buf, format='png', dpi=200)
-            plt.close()
-            buf.seek(0)
-            return buf
     except Exception:
         pass
     return None
@@ -821,8 +782,9 @@ p_nat_1, l_nat_1, p_for_1, l_for_1, p_87_1, l_87_1, p_88_1, l_88_1 = 0, 0, 0, 0,
 
 with tab_jovenes:
     if target_re:
-        c_jov_p = col_exacta(target_re, ['18_19', 'PADRON'], ['18_19'])
-        c_jov_l = col_exacta(target_re, ['18_19', 'LISTA'], ['LNE', '18_19'])
+        c_jov_p = col_exacta(target_re, ['PE', 'JOVENES', '18_19'], ['JOVENES', '18_19'])
+        if c_jov_p == "0": c_jov_p = col_exacta(target_re, ['18_19'])
+        c_jov_l = col_exacta(target_re, ['LNE', 'JOVENES', '18_19'], ['LNE', '18_19'])
         q = f'SELECT SUM(CAST({c_jov_p} AS REAL)) AS p, SUM(CAST({c_jov_l} AS REAL)) AS l FROM {target_re} WHERE {where_aux_str}'
         try:
             df_tmp = pd.read_sql_query(q, conn)
@@ -838,8 +800,9 @@ with tab_jovenes:
 
 with tab_mayores:
     if target_re:
-        c_may_p = col_exacta(target_re, ['65', 'PADRON'], ['65'])
-        c_may_l = col_exacta(target_re, ['65', 'LISTA'], ['LNE', '65'])
+        c_may_p = col_exacta(target_re, ['PE', 'MAS', '65'], ['MAS', '65'])
+        if c_may_p == "0": c_may_p = col_exacta(target_re, ['65'])
+        c_may_l = col_exacta(target_re, ['LNE', 'MAS', '65'], ['LNE', '65'])
         q = f'SELECT SUM(CAST({c_may_p} AS REAL)) AS p, SUM(CAST({c_may_l} AS REAL)) AS l FROM {target_re} WHERE {where_aux_str}'
         try:
             df_tmp = pd.read_sql_query(q, conn)
