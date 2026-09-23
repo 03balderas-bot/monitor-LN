@@ -186,9 +186,9 @@ def consultar_datos_agregados_seguro(corte, condicion_sql):
         return pd.DataFrame([{'padron':0, 'lista':0, 'h_padron':0, 'h_lista':0, 'm_padron':0, 'm_lista':0, 'nb_padron':0, 'nb_lista':0}])
 
 # ==============================================================================
-# FUNCIONES DE INTELIGENCIA VISUAL Y GRÁFICAS BLINDADAS
+# FUNCIONES DE INTELIGENCIA VISUAL Y GRÁFICAS BLINDADAS (PE_RE y PE_EO)
 # ==============================================================================
-def generar_grafico_top_jovenes(corte, cve_ent=None):
+def generar_grafico_top_jovenes(corte):
     try:
         tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)['name'].tolist()
         if 'PE_RE' in tables:
@@ -197,11 +197,12 @@ def generar_grafico_top_jovenes(corte, cve_ent=None):
             
             if col_sel:
                 q = f"""
-                    SELECT CLAVE_ENTIDAD, 
-                           (SUM(CAST("{col_sel}" AS REAL)) * 100.0 / SUM(CAST(PADRON_NATIVO + PADRON_FORANEO + PADRON_NATURALIZADO AS REAL))) AS pct_jovenes
-                    FROM PE_RE
-                    WHERE FECHA_CORTE = ?
-                    GROUP BY CLAVE_ENTIDAD
+                    SELECT R.CLAVE_ENTIDAD, 
+                           (SUM(CAST(R."{col_sel}" AS REAL)) * 100.0 / 
+                            (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX S WHERE S.FECHA_CORTE = R.FECHA_CORTE AND S.CLAVE_ENTIDAD = R.CLAVE_ENTIDAD)) AS pct_jovenes
+                    FROM PE_RE R
+                    WHERE R.FECHA_CORTE = ?
+                    GROUP BY R.CLAVE_ENTIDAD
                     ORDER BY pct_jovenes DESC
                     LIMIT 5
                 """
@@ -224,7 +225,7 @@ def generar_grafico_top_jovenes(corte, cve_ent=None):
         pass
     return None
 
-def generar_grafico_top_mayores(corte, cve_ent=None):
+def generar_grafico_top_mayores(corte):
     try:
         tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)['name'].tolist()
         if 'PE_RE' in tables:
@@ -233,11 +234,12 @@ def generar_grafico_top_mayores(corte, cve_ent=None):
             
             if col_sel:
                 q = f"""
-                    SELECT CLAVE_ENTIDAD, 
-                           (SUM(CAST("{col_sel}" AS REAL)) * 100.0 / SUM(CAST(PADRON_NATIVO + PADRON_FORANEO + PADRON_NATURALIZADO AS REAL))) AS pct_mayores
-                    FROM PE_RE
-                    WHERE FECHA_CORTE = ?
-                    GROUP BY CLAVE_ENTIDAD
+                    SELECT R.CLAVE_ENTIDAD, 
+                           (SUM(CAST(R."{col_sel}" AS REAL)) * 100.0 / 
+                            (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX S WHERE S.FECHA_CORTE = R.FECHA_CORTE AND S.CLAVE_ENTIDAD = R.CLAVE_ENTIDAD)) AS pct_mayores
+                    FROM PE_RE R
+                    WHERE R.FECHA_CORTE = ?
+                    GROUP BY R.CLAVE_ENTIDAD
                     ORDER BY pct_mayores DESC
                     LIMIT 5
                 """
@@ -459,10 +461,10 @@ def generar_pdf_reporte(titulo_alcance, desc_cortes, p1, p2, l1, l2, cob1, cob2,
             story.append(t_img)
             story.append(Spacer(1, 4))
 
-    img_jov = generar_grafico_top_jovenes(corte_rec, cve_ent)
+    img_jov = generar_grafico_top_jovenes(corte_rec)
     agregar_imagen_centrada(img_jov, 410, 120)
     
-    img_may = generar_grafico_top_mayores(corte_rec, cve_ent)
+    img_may = generar_grafico_top_mayores(corte_rec)
     agregar_imagen_centrada(img_may, 410, 120)
     
     img_ext = generar_grafico_top_extranjero(corte_rec)
