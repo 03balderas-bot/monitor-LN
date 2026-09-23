@@ -13,7 +13,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 # ==============================================================================
-# EXTRACCIÓN AUTOMÁTICA Y SEGURA DE LA BASE DE DATOS (.7Z)
+# EXTRACCIÓN AUTOMÁTICA Y SEGURA DE LA BASE DE DATOS (.7Z) EN LA NUBE
 # ==============================================================================
 DIR_RAIZ = Path(__file__).resolve().parent
 DB_PATH = DIR_RAIZ / "derfe_web.db"
@@ -188,7 +188,7 @@ def consultar_datos_agregados_seguro(corte, condicion_sql):
 # ==============================================================================
 # FUNCIONES DE INTELIGENCIA VISUAL Y GRÁFICAS BLINDADAS
 # ==============================================================================
-def generar_grafico_top_jovenes(corte):
+def generar_grafico_top_jovenes(corte, cve_ent=None):
     try:
         tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)['name'].tolist()
         if 'PE_RE' in tables:
@@ -220,31 +220,11 @@ def generar_grafico_top_jovenes(corte):
                     plt.close()
                     buf.seek(0)
                     return buf
-        
-        q_alt = """
-            SELECT CLAVE_ENTIDAD, (SUM(CAST("PADRON ELECTORAL" AS REAL)) * 100.0 / (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX WHERE FECHA_CORTE = ?)) as pct
-            FROM PE_SEX WHERE FECHA_CORTE = ? GROUP BY CLAVE_ENTIDAD ORDER BY pct DESC LIMIT 5
-        """
-        df_alt = pd.read_sql_query(q_alt, conn, params=[corte, corte])
-        if not df_alt.empty:
-            df_alt['ENTIDAD'] = df_alt['CLAVE_ENTIDAD'].map(CATALOGO_ENTIDADES)
-            plt.figure(figsize=(6.5, 2.2))
-            plt.barh(df_alt['ENTIDAD'][::-1], df_alt['pct'][::-1], color='#10B981')
-            plt.title(f"Top 5 Entidades con Mayor Padrón Electoral - {formatear_corte(corte)}", fontsize=9, fontweight='bold', color='#4A2E7A')
-            plt.xlabel("Participación en el Padrón Nacional (%)", fontsize=8)
-            plt.xticks(fontsize=7.5)
-            plt.yticks(fontsize=8)
-            plt.tight_layout()
-            buf = BytesIO()
-            plt.savefig(buf, format='png', dpi=200)
-            plt.close()
-            buf.seek(0)
-            return buf
     except Exception:
         pass
     return None
 
-def generar_grafico_top_mayores(corte):
+def generar_grafico_top_mayores(corte, cve_ent=None):
     try:
         tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)['name'].tolist()
         if 'PE_RE' in tables:
@@ -276,26 +256,6 @@ def generar_grafico_top_mayores(corte):
                     plt.close()
                     buf.seek(0)
                     return buf
-
-        q_alt = """
-            SELECT CLAVE_ENTIDAD, (SUM(CAST("LISTA NOMINAL" AS REAL)) * 100.0 / SUM(CAST("PADRON ELECTORAL" AS REAL))) as cob
-            FROM PE_SEX WHERE FECHA_CORTE = ? GROUP BY CLAVE_ENTIDAD ORDER BY cob DESC LIMIT 5
-        """
-        df_alt = pd.read_sql_query(q_alt, conn, params=[corte])
-        if not df_alt.empty:
-            df_alt['ENTIDAD'] = df_alt['CLAVE_ENTIDAD'].map(CATALOGO_ENTIDADES)
-            plt.figure(figsize=(6.5, 2.2))
-            plt.barh(df_alt['ENTIDAD'][::-1], df_alt['cob'][::-1], color='#F59E0B')
-            plt.title(f"Top 5 Entidades con Mayor Cobertura Registral (%) - {formatear_corte(corte)}", fontsize=9, fontweight='bold', color='#4A2E7A')
-            plt.xlabel("Cobertura Registral (%)", fontsize=8)
-            plt.xticks(fontsize=7.5)
-            plt.yticks(fontsize=8)
-            plt.tight_layout()
-            buf = BytesIO()
-            plt.savefig(buf, format='png', dpi=200)
-            plt.close()
-            buf.seek(0)
-            return buf
     except Exception:
         pass
     return None
@@ -499,10 +459,10 @@ def generar_pdf_reporte(titulo_alcance, desc_cortes, p1, p2, l1, l2, cob1, cob2,
             story.append(t_img)
             story.append(Spacer(1, 4))
 
-    img_jov = generar_grafico_top_jovenes(corte_rec)
+    img_jov = generar_grafico_top_jovenes(corte_rec, cve_ent)
     agregar_imagen_centrada(img_jov, 410, 120)
     
-    img_may = generar_grafico_top_mayores(corte_rec)
+    img_may = generar_grafico_top_mayores(corte_rec, cve_ent)
     agregar_imagen_centrada(img_may, 410, 120)
     
     img_ext = generar_grafico_top_extranjero(corte_rec)
