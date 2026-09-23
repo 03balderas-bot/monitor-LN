@@ -186,7 +186,7 @@ def consultar_datos_agregados_seguro(corte, condicion_sql):
         return pd.DataFrame([{'padron':0, 'lista':0, 'h_padron':0, 'h_lista':0, 'm_padron':0, 'm_lista':0, 'nb_padron':0, 'nb_lista':0}])
 
 # ==============================================================================
-# FUNCIONES DE INTELIGENCIA VISUAL Y GRÁFICAS BLINDADAS (PE_RE y PE_EO)
+# FUNCIONES DE GRÁFICAS BLINDADAS Y ROBUSTAS (USANDO PE_SEX COMO RESPALDO)
 # ==============================================================================
 def generar_grafico_top_jovenes(corte):
     try:
@@ -197,12 +197,12 @@ def generar_grafico_top_jovenes(corte):
             
             if col_sel:
                 q = f"""
-                    SELECT R.CLAVE_ENTIDAD, 
-                           (SUM(CAST(R."{col_sel}" AS REAL)) * 100.0 / 
-                            (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX S WHERE S.FECHA_CORTE = R.FECHA_CORTE AND S.CLAVE_ENTIDAD = R.CLAVE_ENTIDAD)) AS pct_jovenes
-                    FROM PE_RE R
-                    WHERE R.FECHA_CORTE = ?
-                    GROUP BY R.CLAVE_ENTIDAD
+                    SELECT CLAVE_ENTIDAD, 
+                           (SUM(CAST("{col_sel}" AS REAL)) * 100.0 / 
+                            (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX S WHERE S.FECHA_CORTE = PE_RE.FECHA_CORTE AND S.CLAVE_ENTIDAD = PE_RE.CLAVE_ENTIDAD)) AS pct_jovenes
+                    FROM PE_RE
+                    WHERE FECHA_CORTE = ?
+                    GROUP BY CLAVE_ENTIDAD
                     ORDER BY pct_jovenes DESC
                     LIMIT 5
                 """
@@ -221,6 +221,27 @@ def generar_grafico_top_jovenes(corte):
                     plt.close()
                     buf.seek(0)
                     return buf
+        
+        # Respaldo general usando PE_SEX si PE_RE no está disponible
+        q_alt = """
+            SELECT CLAVE_ENTIDAD, (SUM(CAST("PADRON ELECTORAL" AS REAL)) * 100.0 / (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX WHERE FECHA_CORTE = ?)) as pct
+            FROM PE_SEX WHERE FECHA_CORTE = ? GROUP BY CLAVE_ENTIDAD ORDER BY pct DESC LIMIT 5
+        """
+        df_alt = pd.read_sql_query(q_alt, conn, params=[corte, corte])
+        if not df_alt.empty:
+            df_alt['ENTIDAD'] = df_alt['CLAVE_ENTIDAD'].map(CATALOGO_ENTIDADES)
+            plt.figure(figsize=(6.5, 2.2))
+            plt.barh(df_alt['ENTIDAD'][::-1], df_alt['pct'][::-1], color='#10B981')
+            plt.title(f"Top 5 Entidades con Mayor Padrón Electoral - {formatear_corte(corte)}", fontsize=9, fontweight='bold', color='#4A2E7A')
+            plt.xlabel("Participación en el Padrón Nacional (%)", fontsize=8)
+            plt.xticks(fontsize=7.5)
+            plt.yticks(fontsize=8)
+            plt.tight_layout()
+            buf = BytesIO()
+            plt.savefig(buf, format='png', dpi=200)
+            plt.close()
+            buf.seek(0)
+            return buf
     except Exception:
         pass
     return None
@@ -234,12 +255,12 @@ def generar_grafico_top_mayores(corte):
             
             if col_sel:
                 q = f"""
-                    SELECT R.CLAVE_ENTIDAD, 
-                           (SUM(CAST(R."{col_sel}" AS REAL)) * 100.0 / 
-                            (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX S WHERE S.FECHA_CORTE = R.FECHA_CORTE AND S.CLAVE_ENTIDAD = R.CLAVE_ENTIDAD)) AS pct_mayores
-                    FROM PE_RE R
-                    WHERE R.FECHA_CORTE = ?
-                    GROUP BY R.CLAVE_ENTIDAD
+                    SELECT CLAVE_ENTIDAD, 
+                           (SUM(CAST("{col_sel}" AS REAL)) * 100.0 / 
+                            (SELECT SUM(CAST("PADRON ELECTORAL" AS REAL)) FROM PE_SEX S WHERE S.FECHA_CORTE = PE_RE.FECHA_CORTE AND S.CLAVE_ENTIDAD = PE_RE.CLAVE_ENTIDAD)) AS pct_mayores
+                    FROM PE_RE
+                    WHERE FECHA_CORTE = ?
+                    GROUP BY CLAVE_ENTIDAD
                     ORDER BY pct_mayores DESC
                     LIMIT 5
                 """
@@ -258,6 +279,26 @@ def generar_grafico_top_mayores(corte):
                     plt.close()
                     buf.seek(0)
                     return buf
+
+        q_alt = """
+            SELECT CLAVE_ENTIDAD, (SUM(CAST("LISTA NOMINAL" AS REAL)) * 100.0 / SUM(CAST("PADRON ELECTORAL" AS REAL))) as cob
+            FROM PE_SEX WHERE FECHA_CORTE = ? GROUP BY CLAVE_ENTIDAD ORDER BY cob DESC LIMIT 5
+        """
+        df_alt = pd.read_sql_query(q_alt, conn, params=[corte])
+        if not df_alt.empty:
+            df_alt['ENTIDAD'] = df_alt['CLAVE_ENTIDAD'].map(CATALOGO_ENTIDADES)
+            plt.figure(figsize=(6.5, 2.2))
+            plt.barh(df_alt['ENTIDAD'][::-1], df_alt['cob'][::-1], color='#F59E0B')
+            plt.title(f"Top 5 Entidades con Mayor Cobertura Registral (%) - {formatear_corte(corte)}", fontsize=9, fontweight='bold', color='#4A2E7A')
+            plt.xlabel("Cobertura Registral (%)", fontsize=8)
+            plt.xticks(fontsize=7.5)
+            plt.yticks(fontsize=8)
+            plt.tight_layout()
+            buf = BytesIO()
+            plt.savefig(buf, format='png', dpi=200)
+            plt.close()
+            buf.seek(0)
+            return buf
     except Exception:
         pass
     return None
