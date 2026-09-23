@@ -186,17 +186,19 @@ def consultar_datos_agregados_seguro(corte, condicion_sql):
         return pd.DataFrame([{'padron':0, 'lista':0, 'h_padron':0, 'h_lista':0, 'm_padron':0, 'm_lista':0, 'nb_padron':0, 'nb_lista':0}])
 
 # ==============================================================================
-# FUNCIONES DE INTELIGENCIA VISUAL Y GRÁFICAS
+# FUNCIONES DE INTELIGENCIA VISUAL Y GRÁFICAS BLINDADAS
 # ==============================================================================
 def generar_grafico_top_jovenes(corte):
     try:
         tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)['name'].tolist()
         if 'PE_RE' in tables:
-            c_jov = col_exacta('PE_RE', ['18_19', 'PADRON'], ['18_19'])
-            if c_jov != "0":
+            cols_db = pd.read_sql_query("PRAGMA table_info(PE_RE);", conn)['name'].tolist()
+            col_sel = next((c for c in cols_db if ('18' in c or '19' in c) and 'PADRON' in c.upper()), None)
+            
+            if col_sel:
                 q = f"""
                     SELECT CLAVE_ENTIDAD, 
-                           (SUM(CAST({c_jov} AS REAL)) * 100.0 / SUM(CAST(PADRON_NATIVO + PADRON_FORANEO + PADRON_NATURALIZADO AS REAL))) AS pct_jovenes
+                           (SUM(CAST("{col_sel}" AS REAL)) * 100.0 / SUM(CAST(PADRON_NATIVO + PADRON_FORANEO + PADRON_NATURALIZADO AS REAL))) AS pct_jovenes
                     FROM PE_RE
                     WHERE FECHA_CORTE = ?
                     GROUP BY CLAVE_ENTIDAD
@@ -246,11 +248,13 @@ def generar_grafico_top_mayores(corte):
     try:
         tables = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)['name'].tolist()
         if 'PE_RE' in tables:
-            c_may = col_exacta('PE_RE', ['65', 'PADRON'], ['65'])
-            if c_may != "0":
+            cols_db = pd.read_sql_query("PRAGMA table_info(PE_RE);", conn)['name'].tolist()
+            col_sel = next((c for c in cols_db if '65' in c and 'PADRON' in c.upper()), None)
+            
+            if col_sel:
                 q = f"""
                     SELECT CLAVE_ENTIDAD, 
-                           (SUM(CAST({c_may} AS REAL)) * 100.0 / SUM(CAST(PADRON_NATIVO + PADRON_FORANEO + PADRON_NATURALIZADO AS REAL))) AS pct_mayores
+                           (SUM(CAST("{col_sel}" AS REAL)) * 100.0 / SUM(CAST(PADRON_NATIVO + PADRON_FORANEO + PADRON_NATURALIZADO AS REAL))) AS pct_mayores
                     FROM PE_RE
                     WHERE FECHA_CORTE = ?
                     GROUP BY CLAVE_ENTIDAD
