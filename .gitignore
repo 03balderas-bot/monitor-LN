@@ -1,0 +1,10 @@
+derfe_web.db
+PE_EO/
+PE_RE/
+PE_SEX/
+Por edad/
+Por entidad de origen/
+Por sexo/
+.streamlit/
+__pycache__/
+*.pyc
