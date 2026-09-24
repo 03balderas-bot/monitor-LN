@@ -19,6 +19,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 import streamlit as st
+import streamlit.components.v1 as components
 
 # ==============================================================================
 # EXTRACCIÓN AUTOMÁTICA Y SEGURA DE LA BASE DE DATOS (.7Z)
@@ -45,6 +46,29 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
+# BLINDAJE DE IDIOMA Y SUPRESIÓN DE TRADUCCIÓN AUTOMÁTICA
+components.html(
+    """
+<script>
+    const root = window.parent.document.documentElement;
+    root.setAttribute('lang', 'es');
+    root.setAttribute('xml:lang', 'es');
+    root.setAttribute('translate', 'no');
+    root.classList.add('notranslate');
+
+    let metaGoogle = window.parent.document.querySelector('meta[name="google"]');
+    if (!metaGoogle) {
+        metaGoogle = window.parent.document.createElement('meta');
+        metaGoogle.name = 'google';
+        metaGoogle.content = 'notranslate';
+        window.parent.document.getElementsByTagName('head')[0].appendChild(metaGoogle);
+    }
+</script>
+""",
+    height=0,
+    width=0,
+)
+
 
 @st.cache_resource
 def get_conn():
@@ -62,6 +86,9 @@ conn = get_conn()
 st.markdown(
     """
 <style>
+    html, body, [class*="css"] {
+        translate: no !important;
+    }
     .main-title { font-size: 1.55rem !important; font-weight: 800; margin-bottom: 0.1rem; line-height: 1.2; }
     .sub-title { color: #8A99AD; font-size: 0.88rem !important; margin-bottom: 0.5rem; }
     .footer-fuente { font-size: 0.78rem !important; color: #64748B; margin-top: 1.5rem; margin-bottom: 1rem; border-top: 1px solid #334155; padding-top: 0.5rem; }
@@ -72,7 +99,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Catálogo oficial con ortografía rigurosa en mayúsculas
 CATALOGO_ENTIDADES = {
     1: "AGUASCALIENTES",
     2: "BAJA CALIFORNIA",
@@ -152,6 +178,15 @@ def formatear_corte(corte_val) -> str:
   elif len(c) == 8 and c.isdigit():
     return f"{c[6:8]}/{c[4:6]}/{c[:4]}"
   return c
+
+
+def calc_var_str(delta, base):
+  if base > 0:
+    return f"{delta:+,.0f} ({delta / base * 100:+.2f}%)"
+  elif delta > 0:
+    return f"{delta:+,.0f} (Nuevo)"
+  else:
+    return f"{delta:+,.0f} (0.00%)"
 
 
 def obtener_cortes_ordenados():
@@ -853,7 +888,6 @@ def generar_pdf_reporte(
   ine_purple = colors.HexColor("#5C3A92")
   ine_dark = colors.HexColor("#4A2E7A")
 
-  # Estilos con justificación completa (alignment=4)
   title_style = ParagraphStyle(
       "TitleStyle",
       parent=styles["Heading1"],
@@ -1319,20 +1353,20 @@ with st.sidebar:
 # RENDERIZADO DEL ENCABEZADO Y MÉTRICAS SUPERIORES
 # ==============================================================================
 st.markdown(
-    f"<div class='main-title'>Padrón Electoral y Lista Nominal:"
+    f"<div class='main-title notranslate'>Padrón Electoral y Lista Nominal:"
     f" {nombre_header}</div>",
     unsafe_allow_html=True,
 )
 if modo == "Comparar con Periodo Previo" and corte_base:
   st.markdown(
-      "<div class='sub-title'>Evolución histórica: Corte Reciente"
+      "<div class='sub-title notranslate'>Evolución histórica: Corte Reciente"
       f" (<b>{formatear_corte(corte_reciente)}</b>) frente a Corte Base"
       f" (<b>{formatear_corte(corte_base)}</b>)</div>",
       unsafe_allow_html=True,
   )
 else:
   st.markdown(
-      "<div class='sub-title'>Corte de operación analizado:"
+      "<div class='sub-title notranslate'>Corte de operación analizado:"
       f" <b>{formatear_corte(corte_reciente)}</b></div>",
       unsafe_allow_html=True,
   )
@@ -1387,35 +1421,57 @@ if modo == "Comparar con Periodo Previo" and corte_base:
   nb_lista_2 = int(df_m2["nb_lista"].iloc[0] or 0)
 
   dh_p = h_padron_1 - h_padron_2
-  pct_hp = (dh_p / h_padron_2 * 100) if h_padron_2 > 0 else 0
   dh_l = h_lista_1 - h_lista_2
-  pct_hl = (dh_l / h_lista_2 * 100) if h_lista_2 > 0 else 0
-
   dm_p = m_padron_1 - m_padron_2
-  pct_mp = (dm_p / m_padron_2 * 100) if m_padron_2 > 0 else 0
   dm_l = m_lista_1 - m_lista_2
-  pct_ml = (dm_l / m_lista_2 * 100) if m_lista_2 > 0 else 0
-
   dnb_p = nb_padron_1 - nb_padron_2
-  pct_nbp = (dnb_p / nb_padron_2 * 100) if nb_padron_2 > 0 else 0
   dnb_l = nb_lista_1 - nb_lista_2
-  pct_nbl = (dnb_l / nb_lista_2 * 100) if nb_lista_2 > 0 else 0
 
   gh1, gh2, gh3 = st.columns(3)
   with gh1:
     st.markdown("**👨 Hombres**")
-    st.metric("Padrón", f"{h_padron_1:,}", f"{dh_p:+,} ({pct_hp:+.2f}%)")
-    st.metric("Lista Nominal", f"{h_lista_1:,}", f"{dh_l:+,} ({pct_hl:+.2f}%)")
+    st.metric(
+        "Padrón",
+        f"{h_padron_1:,}",
+        calc_var_str(dh_p, h_padron_2),
+        delta_color="normal" if dh_p >= 0 else "inverse",
+    )
+    st.metric(
+        "Lista Nominal",
+        f"{h_lista_1:,}",
+        calc_var_str(dh_l, h_lista_2),
+        delta_color="normal" if dh_l >= 0 else "inverse",
+    )
     st.text(f"Cobertura: {hcob_1:.2f}%")
   with gh2:
     st.markdown("**👩 Mujeres**")
-    st.metric("Padrón", f"{m_padron_1:,}", f"{dm_p:+,} ({pct_mp:+.2f}%)")
-    st.metric("Lista Nominal", f"{m_lista_1:,}", f"{dm_l:+,} ({pct_ml:+.2f}%)")
+    st.metric(
+        "Padrón",
+        f"{m_padron_1:,}",
+        calc_var_str(dm_p, m_padron_2),
+        delta_color="normal" if dm_p >= 0 else "inverse",
+    )
+    st.metric(
+        "Lista Nominal",
+        f"{m_lista_1:,}",
+        calc_var_str(dm_l, m_lista_2),
+        delta_color="normal" if dm_l >= 0 else "inverse",
+    )
     st.text(f"Cobertura: {mcob_1:.2f}%")
   with gh3:
     st.markdown("**⚧ No Binarios**")
-    st.metric("Padrón", f"{nb_padron_1:,}", f"{dnb_p:+,} ({pct_nbp:+.2f}%)")
-    st.metric("Lista Nominal", f"{nb_lista_1:,}", f"{dnb_l:+,} ({pct_nbl:+.2f}%)")
+    st.metric(
+        "Padrón",
+        f"{nb_padron_1:,}",
+        calc_var_str(dnb_p, nb_padron_2),
+        delta_color="normal" if dnb_p >= 0 else "inverse",
+    )
+    st.metric(
+        "Lista Nominal",
+        f"{nb_lista_1:,}",
+        calc_var_str(dnb_l, nb_lista_2),
+        delta_color="normal" if dnb_l >= 0 else "inverse",
+    )
     st.text(f"Cobertura: {nbcob_1:.2f}%")
 else:
   gh1, gh2, gh3 = st.columns(3)
@@ -1498,18 +1554,20 @@ with tab_jovenes:
   cobjov_1 = (ljov_1 / pjov_1 * 100) if pjov_1 > 0 else 0
   if modo == "Comparar con Periodo Previo" and corte_base:
     dp_jov = pjov_1 - pjov_2
-    pp_jov = (dp_jov / pjov_2 * 100) if pjov_2 > 0 else 0
     dl_jov = ljov_1 - ljov_2
-    pl_jov = (dl_jov / ljov_2 * 100) if ljov_2 > 0 else 0
 
     j1, j2, j3, j4 = st.columns(4)
     j1.metric(
-        "Padrón (18-19 años)", f"{pjov_1:,}", f"{dp_jov:+,} ({pp_jov:+.2f}%)"
+        "Padrón (18-19 años)",
+        f"{pjov_1:,}",
+        calc_var_str(dp_jov, pjov_2),
+        delta_color="normal" if dp_jov >= 0 else "inverse",
     )
     j2.metric(
         "Lista Nominal (18-19 años)",
         f"{ljov_1:,}",
-        f"{dl_jov:+,} ({pl_jov:+.2f}%)",
+        calc_var_str(dl_jov, ljov_2),
+        delta_color="normal" if dl_jov >= 0 else "inverse",
     )
     j3.metric("Cobertura Registral", f"{cobjov_1:.2f}%")
     j4.metric(
@@ -1550,20 +1608,20 @@ with tab_mayores:
   cobmay_1 = (lmay_1 / pmay_1 * 100) if pmay_1 > 0 else 0
   if modo == "Comparar con Periodo Previo" and corte_base:
     dp_may = pmay_1 - pmay_2
-    pp_may = (dp_may / pmay_2 * 100) if pmay_2 > 0 else 0
     dl_may = lmay_1 - lmay_2
-    pl_may = (dl_may / lmay_2 * 100) if lmay_2 > 0 else 0
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric(
         "Padrón (65 años y más)",
         f"{pmay_1:,}",
-        f"{dp_may:+,} ({pp_may:+.2f}%)",
+        calc_var_str(dp_may, pmay_2),
+        delta_color="normal" if dp_may >= 0 else "inverse",
     )
     m2.metric(
         "Lista Nominal (65 años y más)",
         f"{lmay_1:,}",
-        f"{dl_may:+,} ({pl_may:+.2f}%)",
+        calc_var_str(dl_may, lmay_2),
+        delta_color="normal" if dl_may >= 0 else "inverse",
     )
     m3.metric("Cobertura Registral", f"{cobmay_1:.2f}%")
     m4.metric(
@@ -1671,37 +1729,35 @@ with tab_origen:
         st.markdown("##### 📌 Padrón Electoral por Origen")
         if modo == "Comparar con Periodo Previo" and corte_base:
           dp_nat = p_nat_1 - p_nat_2
-          pp_nat = (dp_nat / p_nat_2 * 100) if p_nat_2 > 0 else 0
           dp_for = p_for_1 - p_for_2
-          pp_for = (dp_for / p_for_2 * 100) if p_for_2 > 0 else 0
           dp_88 = p_88_1 - p_88_2
-          pp_88 = (dp_88 / p_88_2 * 100) if p_88_2 > 0 else 0
           dp_87 = p_87_1 - p_87_2
-          pp_87 = (dp_87 / p_87_2 * 100) if p_87_2 > 0 else 0
 
           st.metric(
               "Padrón Nativo",
               f"{p_nat_1:,}",
-              f"{dp_nat:+,.0f} ({pp_nat:+.2f}% var) | Estructura:"
+              f"{calc_var_str(dp_nat, p_nat_2)} | Estructura:"
               f" {p_nat_pct:.2f}%",
+              delta_color="normal" if dp_nat >= 0 else "inverse",
           )
           st.metric(
               "Padrón Foráneo",
               f"{p_for_1:,}",
-              f"{dp_for:+,.0f} ({pp_for:+.2f}% var) | Estructura:"
+              f"{calc_var_str(dp_for, p_for_2)} | Estructura:"
               f" {p_for_pct:.2f}%",
+              delta_color="normal" if dp_for >= 0 else "inverse",
           )
           st.metric(
               "Padrón Naturalizado (88)",
               f"{p_88_1:,}",
-              f"{dp_88:+,.0f} ({pp_88:+.2f}% var) | Estructura:"
-              f" {p_88_pct:.2f}%",
+              f"{calc_var_str(dp_88, p_88_2)} | Estructura: {p_88_pct:.2f}%",
+              delta_color="normal" if dp_88 >= 0 else "inverse",
           )
           st.metric(
               "Padrón Hijos de Mex (87)",
               f"{p_87_1:,}",
-              f"{dp_87:+,.0f} ({pp_87:+.2f}% var) | Estructura:"
-              f" {p_87_pct:.2f}%",
+              f"{calc_var_str(dp_87, p_87_2)} | Estructura: {p_87_pct:.2f}%",
+              delta_color="normal" if dp_87 >= 0 else "inverse",
           )
         else:
           st.metric(
@@ -1725,37 +1781,35 @@ with tab_origen:
         st.markdown("##### 📌 Lista Nominal por Origen")
         if modo == "Comparar con Periodo Previo" and corte_base:
           dl_nat = l_nat_1 - l_nat_2
-          pl_nat = (dl_nat / l_nat_2 * 100) if l_nat_2 > 0 else 0
           dl_for = l_for_1 - l_for_2
-          pl_for = (dl_for / l_for_2 * 100) if l_for_2 > 0 else 0
           dl_88 = l_88_1 - l_88_2
-          pl_88 = (dl_88 / l_88_2 * 100) if l_88_2 > 0 else 0
           dl_87 = l_87_1 - l_87_2
-          pl_87 = (dl_87 / l_87_2 * 100) if l_87_2 > 0 else 0
 
           st.metric(
               "Lista Nativa",
               f"{l_nat_1:,}",
-              f"{dl_nat:+,.0f} ({pl_nat:+.2f}% var) | Estructura:"
+              f"{calc_var_str(dl_nat, l_nat_2)} | Estructura:"
               f" {l_nat_pct:.2f}%",
+              delta_color="normal" if dl_nat >= 0 else "inverse",
           )
           st.metric(
               "Lista Foránea",
               f"{l_for_1:,}",
-              f"{dl_for:+,.0f} ({pl_for:+.2f}% var) | Estructura:"
+              f"{calc_var_str(dl_for, l_for_2)} | Estructura:"
               f" {l_for_pct:.2f}%",
+              delta_color="normal" if dl_for >= 0 else "inverse",
           )
           st.metric(
               "Lista Naturalizada (88)",
               f"{l_88_1:,}",
-              f"{dl_88:+,.0f} ({pl_88:+.2f}% var) | Estructura:"
-              f" {l_88_pct:.2f}%",
+              f"{calc_var_str(dl_88, l_88_2)} | Estructura: {l_88_pct:.2f}%",
+              delta_color="normal" if dl_88 >= 0 else "inverse",
           )
           st.metric(
               "Lista Hijos de Mex (87)",
               f"{l_87_1:,}",
-              f"{dl_87:+,.0f} ({pl_87:+.2f}% var) | Estructura:"
-              f" {l_87_pct:.2f}%",
+              f"{calc_var_str(dl_87, l_87_2)} | Estructura: {l_87_pct:.2f}%",
+              delta_color="normal" if dl_87 >= 0 else "inverse",
           )
         else:
           st.metric(
@@ -1778,8 +1832,8 @@ with tab_origen:
       pass
 
 st.markdown(
-    "<div class='footer-fuente'>📊 Datos oficiales extraídos de la plataforma"
-    " de Datos Abiertos del INE: <a"
+    "<div class='footer-fuente notranslate'>📊 Datos oficiales extraídos de la"
+    " plataforma de Datos Abiertos del INE: <a"
     " href='https://ine.mx/transparencia/datos-abiertos/#/tematica/padron-electoral'"
     " target='_blank'>https://ine.mx/transparencia/datos-abiertos/#/tematica/padron-electoral</a></div>",
     unsafe_allow_html=True,
