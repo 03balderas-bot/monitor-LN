@@ -1,5 +1,8 @@
+@"
 streamlit
 pandas
-py7zr
+plotly
 matplotlib
 reportlab
+py7zr
+"@ | Out-File -Encoding utf8 requirements.txt
