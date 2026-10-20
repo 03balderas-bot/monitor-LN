@@ -31,12 +31,23 @@ DB_PATH = DIR_RAIZ / "derfe_web.db"
 ARCHIVE_7Z_PATH = DIR_RAIZ / "derfe_web.7z"
 LOGO_PATH = DIR_RAIZ / "logo_ine.png"
 
-if not DB_PATH.exists() and ARCHIVE_7Z_PATH.exists():
-  try:
-    with py7zr.SevenZipFile(ARCHIVE_7Z_PATH, mode="r") as z:
-      z.extractall(path=DIR_RAIZ)
-  except Exception as e:
-    st.error(f"Error al descomprimir derfe_web.7z: {e}")
+# LÓGICA DE EXTRACCIÓN INTELIGENTE (Soluciona el problema de caché en la nube)
+if ARCHIVE_7Z_PATH.exists():
+    necesita_extraccion = False
+    if not DB_PATH.exists():
+        necesita_extraccion = True
+    # Si el .7z es más reciente que la base de datos actual, fuerza la extracción
+    elif ARCHIVE_7Z_PATH.stat().st_mtime > DB_PATH.stat().st_mtime:
+        necesita_extraccion = True
+
+    if necesita_extraccion:
+        try:
+            if DB_PATH.exists():
+                DB_PATH.unlink()  # Elimina la base de datos obsoleta del servidor
+            with py7zr.SevenZipFile(ARCHIVE_7Z_PATH, mode="r") as z:
+                z.extractall(path=DIR_RAIZ)
+        except Exception as e:
+            st.error(f"Error al descomprimir derfe_web.7z: {e}")
 
 # ==============================================================================
 # CONFIGURACIÓN DE PÁGINA Y ESTILOS
