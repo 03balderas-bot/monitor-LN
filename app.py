@@ -81,7 +81,7 @@ except Exception:
   pass
 
 
-@st.cache_resource
+# ELIMINAMOS @st.cache_resource PARA EVITAR LA "CONEXIÓN FANTASMA"
 def get_conn():
   if not DB_PATH.exists():
     st.error(
