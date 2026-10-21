@@ -4,3 +4,4 @@ plotly
 matplotlib
 reportlab
 py7zr
+openpyxl
