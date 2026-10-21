@@ -31,7 +31,6 @@ DB_PATH = DIR_RAIZ / "derfe_web.db"
 ARCHIVE_7Z_PATH = DIR_RAIZ / "derfe_web.7z"
 LOGO_PATH = DIR_RAIZ / "logo_ine.png"
 
-# LÓGICA DE EXTRACCIÓN INTELIGENTE (Soluciona el problema de caché en la nube)
 if ARCHIVE_7Z_PATH.exists():
     necesita_extraccion = False
     if not DB_PATH.exists():
@@ -250,22 +249,14 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
         """
     df_sex = pd.read_sql_query(q_sex, conn)
 
-    c_pnat = col_exacta("PE_EO", ["PADRON", "NATIVO"])
+    c_pnat = col_exacta("PE_EO", ["NATIVO"], ["NAT"])
     c_lnat = col_exacta("PE_EO", ["LISTA", "NATIVO"], ["LNE", "NATIVO"])
-    c_pfor = col_exacta("PE_EO", ["PADRON", "FORANEO"])
+    c_pfor = col_exacta("PE_EO", ["FORANEO"], ["FOR"])
     c_lfor = col_exacta("PE_EO", ["LISTA", "FORANEO"], ["LNE", "FORANEO"])
-    c_p87 = col_exacta(
-        "PE_EO",
-        ["PADRON", "HIJO"],
-        ["PADRON", "MEXICANO"],
-    )
+    c_p87 = col_exacta("PE_EO", ["HIJO"], ["MEXICANO"])
     c_l87 = col_exacta("PE_EO", ["LISTA", "HIJO"], ["LNE", "HIJO"])
-    c_p88 = col_exacta(
-        "PE_EO", ["PADRON", "NATURALIZADO"], ["PADRON", "88"]
-    )
-    c_l88 = col_exacta(
-        "PE_EO", ["LISTA", "NATURALIZADO"], ["LNE", "NATURALIZADO"]
-    )
+    c_p88 = col_exacta("PE_EO", ["NATURALIZADO"], ["88"])
+    c_l88 = col_exacta("PE_EO", ["LISTA", "NATURALIZADO"], ["LNE", "NATURALIZADO"])
 
     q_eo = f"""
             SELECT 
@@ -281,13 +272,11 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
     h_p = int(df_sex["h_padron"].iloc[0]) if not df_sex.empty else 0
     m_p = int(df_sex["m_padron"].iloc[0]) if not df_sex.empty else 0
     nb_p = int(df_sex["nb_padron"].iloc[0]) if not df_sex.empty else 0
-
     h_l = int(df_sex["h_lista"].iloc[0]) if not df_sex.empty else 0
     m_l = int(df_sex["m_lista"].iloc[0]) if not df_sex.empty else 0
     nb_l = int(df_sex["nb_lista"].iloc[0]) if not df_sex.empty else 0
 
     pad_sex_total = h_p + m_p + nb_p
-
     p_n = int(df_eo["p_nat"].iloc[0]) if not df_eo.empty else 0
     p_f = int(df_eo["p_for"].iloc[0]) if not df_eo.empty else 0
     p_7 = int(df_eo["p_87"].iloc[0]) if not df_eo.empty else 0
@@ -295,15 +284,14 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
     pad_eo_total = p_n + p_f + p_7 + p_8
 
     lis_sex_total = h_l + m_l + nb_l
-
     l_n = int(df_eo["l_nat"].iloc[0]) if not df_eo.empty else 0
     l_f = int(df_eo["l_for"].iloc[0]) if not df_eo.empty else 0
     l_7 = int(df_eo["l_87"].iloc[0]) if not df_eo.empty else 0
     l_8 = int(df_eo["l_88"].iloc[0]) if not df_eo.empty else 0
     lis_eo_total = l_n + l_f + l_7 + l_8
 
-    pad_final = max(pad_sex_total, pad_eo_total)
-    lis_final = max(lis_sex_total, lis_eo_total)
+    pad_final = max(pad_sex_total, pad_eo_total) if max(pad_sex_total, pad_eo_total) > 0 else pad_sex_total
+    lis_final = max(lis_sex_total, lis_eo_total) if max(lis_sex_total, lis_eo_total) > 0 else lis_sex_total
 
     return pd.DataFrame([{
         "padron": pad_final,
@@ -319,28 +307,16 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
         "p_for": p_f,
         "l_for": l_f,
         "p_87": p_7,
-        "l_87": l_7,
+        "l_87": p_7,
         "p_88": p_8,
-        "l_88": l_8,
+        "l_88": p_8,
     }])
   except Exception:
     return pd.DataFrame([{
-        "padron": 0,
-        "lista": 0,
-        "h_padron": 0,
-        "h_lista": 0,
-        "m_padron": 0,
-        "m_lista": 0,
-        "nb_padron": 0,
-        "nb_lista": 0,
-        "p_nat": 0,
-        "l_nat": 0,
-        "p_for": 0,
-        "l_for": 0,
-        "p_87": 0,
-        "l_87": 0,
-        "p_88": 0,
-        "l_88": 0,
+        "padron": 0, "lista": 0, "h_padron": 0, "h_lista": 0,
+        "m_padron": 0, "m_lista": 0, "nb_padron": 0, "nb_lista": 0,
+        "p_nat": 0, "l_nat": 0, "p_for": 0, "l_for": 0,
+        "p_87": 0, "l_87": 0, "p_88": 0, "l_88": 0,
     }])
 
 
@@ -350,6 +326,9 @@ def renderizar_grafica_posicionamiento(
   c_hp = col_exacta("PE_SEX", ["HOMBRE", "PADRON"], ["HOMBRE", "PAD"])
   c_mp = col_exacta("PE_SEX", ["MUJER", "PADRON"], ["MUJER", "PAD"])
   c_nbp = col_exacta("PE_SEX", ["BINARIO", "PADRON"], ["NB", "PAD"])
+  c_hl = col_exacta("PE_SEX", ["HOMBRE", "LISTA"], ["HOMBRE", "LIS"])
+  c_ml = col_exacta("PE_SEX", ["MUJER", "LISTA"], ["MUJER", "LIS"])
+  c_nbl = col_exacta("PE_SEX", ["BINARIO", "LISTA"], ["NB", "LIS"])
 
   if cve_ent:
     nom_entidad = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")
@@ -524,7 +503,77 @@ def renderizar_grafica_posicionamiento(
       with col_v2:
         st.plotly_chart(fig_crec, width="stretch")
     else:
-      st.plotly_chart(fig_vol, width="stretch")
+      q_cob = f"""
+                SELECT CLAVE_DISTRITO,
+                       SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) AS PADRON,
+                       SUM(CAST({c_hl} AS REAL) + CAST({c_ml} AS REAL) + CAST({c_nbl} AS REAL)) AS LISTA
+                FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') AND CLAVE_ENTIDAD = {cve_ent} AND CLAVE_DISTRITO != 0
+                GROUP BY CLAVE_DISTRITO
+            """
+      df_cob = pd.read_sql_query(q_cob, conn)
+      if df_cob.empty:
+        return
+      df_cob["COB"] = (df_cob["LISTA"] / df_cob["PADRON"]) * 100
+      df_cob = df_cob.sort_values(by="COB", ascending=True)
+      promedio_cob = (df_cob["LISTA"].sum() / df_cob["PADRON"].sum()) * 100
+
+      colores_cob = [
+          "#D946EF" if cve_dist and int(d) == int(cve_dist) else "#10B981"
+          for d in df_cob["CLAVE_DISTRITO"]
+      ]
+
+      fig_cob = go.Figure()
+      fig_cob.add_trace(
+          go.Bar(
+              y=df_rec.set_index("CLAVE_DISTRITO")
+              .loc[df_cob["CLAVE_DISTRITO"], "ETIQUETA"]
+              .tolist(),
+              x=df_cob["COB"],
+              orientation="h",
+              marker=dict(color=colores_cob, line=dict(width=0)),
+              text=[f"{x:.2f}%" for x in df_cob["COB"]],
+              textposition="inside",
+              insidetextanchor="middle",
+              textfont=dict(color="#FFFFFF", size=10),
+              hovertemplate=(
+                  "<b>%{y}</b><br>Cobertura: <b>%{x:.2f}%</b><extra></extra>"
+              ),
+          )
+      )
+      fig_cob.add_vline(
+          x=promedio_cob,
+          line_width=1.5,
+          line_dash="dash",
+          line_color="#F59E0B",
+          annotation_text=f"Media Estatal: {promedio_cob:.2f}%",
+          annotation_position="top right",
+          annotation_font=dict(size=10, color="#F59E0B"),
+      )
+      subtitulo_cob = (
+          f"<b>2. Cobertura Registral (%) por Distrito en {nom_entidad}</b>"
+          + (f" (Distrito {cve_dist:02d} resaltado)" if cve_dist else "")
+      )
+      fig_cob.update_layout(
+          title=dict(text=subtitulo_cob, font=dict(size=13, color="#E2E8F0")),
+          xaxis=dict(
+              title="Cobertura Registral (%)",
+              showgrid=True,
+              gridcolor="#334155",
+              zeroline=False,
+          ),
+          yaxis=dict(showgrid=False, tickfont=dict(size=10.5)),
+          plot_bgcolor="rgba(0,0,0,0)",
+          paper_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#94A3B8"),
+          margin=dict(l=20, r=20, t=40, b=30),
+          height=max(340, len(df_cob) * 32),
+      )
+
+      col_v1, col_v2 = st.columns(2)
+      with col_v1:
+        st.plotly_chart(fig_vol, width="stretch")
+      with col_v2:
+        st.plotly_chart(fig_cob, width="stretch")
 
   elif "Nacional" in alcance_tipo:
     if modo_comp and corte_base_comp:
@@ -796,6 +845,9 @@ def generar_grafico_posicionamiento_pdf(
     c_hp = col_exacta("PE_SEX", ["HOMBRE", "PADRON"], ["HOMBRE", "PAD"])
     c_mp = col_exacta("PE_SEX", ["MUJER", "PADRON"], ["MUJER", "PAD"])
     c_nbp = col_exacta("PE_SEX", ["BINARIO", "PADRON"], ["NB", "PAD"])
+    c_hl = col_exacta("PE_SEX", ["HOMBRE", "LISTA"], ["HOMBRE", "LIS"])
+    c_ml = col_exacta("PE_SEX", ["MUJER", "LISTA"], ["MUJER", "LIS"])
+    c_nbl = col_exacta("PE_SEX", ["BINARIO", "LISTA"], ["NB", "LIS"])
 
     if cve_ent:
       nom_ent = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")
@@ -845,22 +897,31 @@ def generar_grafico_posicionamiento_pdf(
         x_label = "Variación Porcentual (%)"
 
       else:
-        q_cob = f"""
+        q = f"""
                     SELECT CLAVE_DISTRITO,
-                           SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) AS PADRON
+                           SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) AS PADRON,
+                           SUM(CAST({c_hl} AS REAL) + CAST({c_ml} AS REAL) + CAST({c_nbl} AS REAL)) AS LISTA
                     FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_ENTIDAD = ? AND CLAVE_DISTRITO != 0
                     GROUP BY CLAVE_DISTRITO
                 """
-        df = pd.read_sql_query(q_cob, conn, params=[str(corte).strip(), int(cve_ent)])
+        df = pd.read_sql_query(q, conn, params=[str(corte).strip(), int(cve_ent)])
         if df.empty:
           return None
-        df["VALOR"] = df["PADRON"]
+
+        df["VALOR"] = (df["LISTA"] / df["PADRON"]) * 100
         df = df.sort_values(by="VALOR", ascending=True)
-        promedio = df["VALOR"].mean()
-        colores = ["#3B82F6" for d in df["CLAVE_DISTRITO"]]
+        promedio = (df["LISTA"].sum() / df["PADRON"].sum()) * 100
+
+        colores = [
+            "#D946EF" if cve_dist and int(d) == int(cve_dist) else "#10B981"
+            for d in df["CLAVE_DISTRITO"]
+        ]
         etiquetas = [f"Dist. {int(d):02d}" for d in df["CLAVE_DISTRITO"]]
-        titulo = f"Volumen Distrital en {nom_ent}"
-        x_label = "Padrón Electoral"
+        titulo = (
+            f"2. Cobertura Registral (%) en {nom_ent}"
+            + (f" (Dist. {cve_dist:02d} resaltado)" if cve_dist else "")
+        )
+        x_label = "Cobertura Registral (%)"
 
       alt = max(2.2, min(4.0, len(df) * 0.25))
       plt.figure(figsize=(6.8, alt))
@@ -870,7 +931,7 @@ def generar_grafico_posicionamiento_pdf(
           color="#F59E0B",
           linestyle="--",
           linewidth=1.2,
-          label=f"Media: {promedio:,.2f}",
+          label=f"Media: {promedio:.2f}%",
       )
       plt.title(titulo, fontsize=9, fontweight="bold", color="#4A2E7A")
       plt.xlabel(x_label, fontsize=8)
@@ -1137,9 +1198,9 @@ def generar_grafico_top_mayores(corte):
 
 def generar_grafico_top_extranjero(corte):
   try:
-    c_pnat = col_exacta("PE_EO", ["PADRON", "NATIVO"])
-    c_pfor = col_exacta("PE_EO", ["PADRON", "FORANEO"])
-    c_pnat_z = col_exacta("PE_EO", ["NATURALIZADO"])
+    c_pnat = col_exacta("PE_EO", ["NATIVO"], ["NAT"])
+    c_pfor = col_exacta("PE_EO", ["FORANEO"], ["FOR"])
+    c_pnat_z = col_exacta("PE_EO", ["NATURALIZADO"], ["88"])
     q = f"""
             SELECT CLAVE_ENTIDAD, 
                    (SUM(CAST(COALESCE({c_pnat},0) + COALESCE({c_pfor},0) + COALESCE({c_pnat_z},0) AS REAL)) * 100.0 / 
@@ -1181,12 +1242,10 @@ def generar_grafico_top_extranjero(corte):
 
 def generar_grafico_distritos_foraneos(corte):
   try:
-    c_pnat = col_exacta("PE_EO", ["PADRON", "NATIVO"])
-    c_pfor = col_exacta("PE_EO", ["PADRON", "FORANEO"])
-    c_p88 = col_exacta("PE_EO", ["PADRON", "NATURALIZADO"], ["PADRON", "88"])
-    c_p87 = col_exacta(
-        "PE_EO", ["PADRON", "HIJO"], ["PADRON", "HIJO_DE_PADRES_MEXICANOS"]
-    )
+    c_pnat = col_exacta("PE_EO", ["NATIVO"], ["NAT"])
+    c_pfor = col_exacta("PE_EO", ["FORANEO"], ["FOR"])
+    c_p88 = col_exacta("PE_EO", ["NATURALIZADO"], ["88"])
+    c_p87 = col_exacta("PE_EO", ["HIJO"], ["MEXICANO"])
 
     q = f"""
             SELECT CLAVE_ENTIDAD, CLAVE_DISTRITO,
@@ -1352,12 +1411,10 @@ def generar_analisis_positivo_texto(corte_rec, corte_bas):
 
 def generar_analisis_foraneos_texto(corte_rec):
   try:
-    c_pnat = col_exacta("PE_EO", ["PADRON", "NATIVO"])
-    c_pfor = col_exacta("PE_EO", ["PADRON", "FORANEO"])
-    c_p88 = col_exacta("PE_EO", ["PADRON", "NATURALIZADO"], ["PADRON", "88"])
-    c_p87 = col_exacta(
-        "PE_EO", ["PADRON", "HIJO"], ["PADRON", "HIJO_DE_PADRES_MEXICANOS"]
-    )
+    c_pnat = col_exacta("PE_EO", ["NATIVO"], ["NAT"])
+    c_pfor = col_exacta("PE_EO", ["FORANEO"], ["FOR"])
+    c_p88 = col_exacta("PE_EO", ["NATURALIZADO"], ["88"])
+    c_p87 = col_exacta("PE_EO", ["HIJO"], ["MEXICANO"])
 
     q_ent = f"""
             SELECT CLAVE_ENTIDAD,
@@ -2292,22 +2349,14 @@ with tab_origen:
   )
   if target_eo:
     try:
-      c_pnat = col_exacta("PE_EO", ["PADRON", "NATIVO"])
+      c_pnat = col_exacta("PE_EO", ["NATIVO"], ["NAT"])
       c_lnat = col_exacta("PE_EO", ["LISTA", "NATIVO"], ["LNE", "NATIVO"])
-      c_pfor = col_exacta("PE_EO", ["PADRON", "FORANEO"])
+      c_pfor = col_exacta("PE_EO", ["FORANEO"], ["FOR"])
       c_lfor = col_exacta("PE_EO", ["LISTA", "FORANEO"], ["LNE", "FORANEO"])
-      c_p87 = col_exacta(
-          "PE_EO",
-          ["PADRON", "HIJO"],
-          ["PADRON", "MEXICANO"],
-      )
+      c_p87 = col_exacta("PE_EO", ["HIJO"], ["MEXICANO"])
       c_l87 = col_exacta("PE_EO", ["LISTA", "HIJO"], ["LNE", "HIJO"])
-      c_p88 = col_exacta(
-          "PE_EO", ["PADRON", "NATURALIZADO"], ["PADRON", "88"]
-      )
-      c_l88 = col_exacta(
-          "PE_EO", ["LISTA", "NATURALIZADO"], ["LNE", "NATURALIZADO"]
-      )
+      c_p88 = col_exacta("PE_EO", ["NATURALIZADO"], ["88"])
+      c_l88 = col_exacta("PE_EO", ["LISTA", "NATURALIZADO"], ["LNE", "NATURALIZADO"])
 
       q_eo1 = f"""
                 SELECT 
