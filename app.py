@@ -31,7 +31,6 @@ DB_PATH = DIR_RAIZ / "derfe_web.db"
 ARCHIVE_7Z_PATH = DIR_RAIZ / "derfe_web.7z"
 LOGO_PATH = DIR_RAIZ / "logo_ine.png"
 
-# LÓGICA DE EXTRACCIÓN INTELIGENTE (Soluciona el problema de caché en la nube)
 if ARCHIVE_7Z_PATH.exists():
     necesita_extraccion = False
     if not DB_PATH.exists():
@@ -109,38 +108,14 @@ st.markdown(
 )
 
 CATALOGO_ENTIDADES = {
-    1: "AGUASCALIENTES",
-    2: "BAJA CALIFORNIA",
-    3: "BAJA CALIFORNIA SUR",
-    4: "CAMPECHE",
-    5: "COAHUILA",
-    6: "COLIMA",
-    7: "CHIAPAS",
-    8: "CHIHUAHUA",
-    9: "CIUDAD DE MÉXICO",
-    10: "DURANGO",
-    11: "GUANAJUATO",
-    12: "GUERRERO",
-    13: "HIDALGO",
-    14: "JALISCO",
-    15: "MÉXICO",
-    16: "MICHOACÁN",
-    17: "MORELOS",
-    18: "NAYARIT",
-    19: "NUEVO LEÓN",
-    20: "OAXACA",
-    21: "PUEBLA",
-    22: "QUERÉTARO",
-    23: "QUINTANA ROO",
-    24: "SAN LUIS POTOSÍ",
-    25: "SINALOA",
-    26: "SONORA",
-    27: "TABASCO",
-    28: "TAMAULIPAS",
-    29: "TLAXCALA",
-    30: "VERACRUZ",
-    31: "YUCATÁN",
-    32: "ZACATECAS",
+    1: "AGUASCALIENTES", 2: "BAJA CALIFORNIA", 3: "BAJA CALIFORNIA SUR",
+    4: "CAMPECHE", 5: "COAHUILA", 6: "COLIMA", 7: "CHIAPAS", 8: "CHIHUAHUA",
+    9: "CIUDAD DE MÉXICO", 10: "DURANGO", 11: "GUANAJUATO", 12: "GUERRERO",
+    13: "HIDALGO", 14: "JALISCO", 15: "MÉXICO", 16: "MICHOACÁN",
+    17: "MORELOS", 18: "NAYARIT", 19: "NUEVO LEÓN", 20: "OAXACA",
+    21: "PUEBLA", 22: "QUERÉTARO", 23: "QUINTANA ROO", 24: "SAN LUIS POTOSÍ",
+    25: "SINALOA", 26: "SONORA", 27: "TABASCO", 28: "TAMAULIPAS",
+    29: "TLAXCALA", 30: "VERACRUZ", 31: "YUCATÁN", 32: "ZACATECAS",
 }
 
 ine_purple = colors.HexColor("#5C3A92")
@@ -152,18 +127,14 @@ def normalizar_txt(s):
   if not isinstance(s, str):
     return ""
   norm = "".join(
-      c
-      for c in unicodedata.normalize("NFD", s.upper())
+      c for c in unicodedata.normalize("NFD", s.upper())
       if unicodedata.category(c) != "Mn"
   )
   return norm.replace(" ", "_").replace(".", "").replace("\n", "_")
 
-
 def col_exacta(tabla, kws_primary, kws_fallback=None):
   try:
-    cols_db = pd.read_sql_query(f"PRAGMA table_info({tabla});", conn)[
-        "name"
-    ].tolist()
+    cols_db = pd.read_sql_query(f"PRAGMA table_info({tabla});", conn)["name"].tolist()
     for c in cols_db:
       c_norm = normalizar_txt(c)
       if all(k in c_norm for k in kws_primary):
@@ -175,8 +146,24 @@ def col_exacta(tabla, kws_primary, kws_fallback=None):
           return f'"{c}"'
   except Exception:
     pass
-  return "0"
+  return '"0"'
 
+# NUEVO MOTOR DE BÚSQUEDA DE COLUMNAS A PRUEBA DE BALAS
+def col_dinamica(tabla, *kws_lists, exclude=None):
+    if exclude is None:
+        exclude = []
+    try:
+        cols_db = pd.read_sql_query(f"PRAGMA table_info({tabla});", conn)["name"].tolist()
+        for kws in kws_lists:
+            for c in cols_db:
+                c_norm = normalizar_txt(c)
+                if any(ex in c_norm for ex in exclude):
+                    continue
+                if all(k in c_norm for k in kws):
+                    return f'"{c}"'
+    except Exception:
+        pass
+    return '"0"'
 
 def formatear_corte(corte_val) -> str:
   c = str(corte_val).strip()
@@ -189,7 +176,6 @@ def formatear_corte(corte_val) -> str:
     return f"{c[6:8]}/{c[4:6]}/{c[:4]}"
   return c
 
-
 def calc_var_str(delta, base):
   if base > 0:
     return f"{delta:+,.0f} ({delta / base * 100:+.2f}%)"
@@ -197,7 +183,6 @@ def calc_var_str(delta, base):
     return f"{delta:+,.0f} (Nuevo)"
   else:
     return f"{delta:+,.0f} (0.00%)"
-
 
 def obtener_cortes_ordenados():
   try:
@@ -227,15 +212,14 @@ def obtener_cortes_ordenados():
   except Exception:
     return []
 
-
 def consultar_datos_agregados_seguro(corte, condicion_where):
   try:
-    c_hp = col_exacta("PE_SEX", ["HOMBRE", "PADRON"], ["HOMBRE", "PAD"])
-    c_hl = col_exacta("PE_SEX", ["HOMBRE", "LISTA"], ["HOMBRE", "LIS"])
-    c_mp = col_exacta("PE_SEX", ["MUJER", "PADRON"], ["MUJER", "PAD"])
-    c_ml = col_exacta("PE_SEX", ["MUJER", "LISTA"], ["MUJER", "LIS"])
-    c_nbp = col_exacta("PE_SEX", ["BINARIO", "PADRON"], ["NB", "PAD"])
-    c_nbl = col_exacta("PE_SEX", ["BINARIO", "LISTA"], ["NB", "LIS"])
+    c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+    c_hl = col_dinamica("PE_SEX", ["HOMBRE", "LIS"], ["HOMBRE", "LNE"])
+    c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+    c_ml = col_dinamica("PE_SEX", ["MUJER", "LIS"], ["MUJER", "LNE"])
+    c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
+    c_nbl = col_dinamica("PE_SEX", ["BINARIO", "LIS"], ["NB", "LIS"], ["NO_BINARIO", "LIS"])
 
     q_sex = f"""
             SELECT 
@@ -250,22 +234,14 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
         """
     df_sex = pd.read_sql_query(q_sex, conn)
 
-    c_pnat = col_exacta("PE_EO", ["PADRON", "NATIVO"])
-    c_lnat = col_exacta("PE_EO", ["LISTA", "NATIVO"], ["LNE", "NATIVO"])
-    c_pfor = col_exacta("PE_EO", ["PADRON", "FORANEO"])
-    c_lfor = col_exacta("PE_EO", ["LISTA", "FORANEO"], ["LNE", "FORANEO"])
-    c_p87 = col_exacta(
-        "PE_EO",
-        ["PADRON", "HIJO"],
-        ["PADRON", "MEXICANO"],
-    )
-    c_l87 = col_exacta("PE_EO", ["LISTA", "HIJO"], ["LNE", "HIJO"])
-    c_p88 = col_exacta(
-        "PE_EO", ["PADRON", "NATURALIZADO"], ["PADRON", "88"]
-    )
-    c_l88 = col_exacta(
-        "PE_EO", ["LISTA", "NATURALIZADO"], ["LNE", "NATURALIZADO"]
-    )
+    c_pnat = col_dinamica("PE_EO", ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"])
+    c_lnat = col_dinamica("PE_EO", ["NATIVO", "LIS"], ["NATIVO", "LNE"], ["NAT", "LIS"])
+    c_pfor = col_dinamica("PE_EO", ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"])
+    c_lfor = col_dinamica("PE_EO", ["FORANEO", "LIS"], ["FORANEO", "LNE"], ["FOR", "LIS"])
+    c_p87 = col_dinamica("PE_EO", ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"])
+    c_l87 = col_dinamica("PE_EO", ["HIJO", "LIS"], ["HIJO", "LNE"], ["MEXICANO", "LIS"])
+    c_p88 = col_dinamica("PE_EO", ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"])
+    c_l88 = col_dinamica("PE_EO", ["NATURALIZADO", "LIS"], ["NATURALIZADO", "LNE"], ["88", "LIS"])
 
     q_eo = f"""
             SELECT 
@@ -281,13 +257,11 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
     h_p = int(df_sex["h_padron"].iloc[0]) if not df_sex.empty else 0
     m_p = int(df_sex["m_padron"].iloc[0]) if not df_sex.empty else 0
     nb_p = int(df_sex["nb_padron"].iloc[0]) if not df_sex.empty else 0
-
     h_l = int(df_sex["h_lista"].iloc[0]) if not df_sex.empty else 0
     m_l = int(df_sex["m_lista"].iloc[0]) if not df_sex.empty else 0
     nb_l = int(df_sex["nb_lista"].iloc[0]) if not df_sex.empty else 0
 
     pad_sex_total = h_p + m_p + nb_p
-
     p_n = int(df_eo["p_nat"].iloc[0]) if not df_eo.empty else 0
     p_f = int(df_eo["p_for"].iloc[0]) if not df_eo.empty else 0
     p_7 = int(df_eo["p_87"].iloc[0]) if not df_eo.empty else 0
@@ -295,15 +269,14 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
     pad_eo_total = p_n + p_f + p_7 + p_8
 
     lis_sex_total = h_l + m_l + nb_l
-
     l_n = int(df_eo["l_nat"].iloc[0]) if not df_eo.empty else 0
     l_f = int(df_eo["l_for"].iloc[0]) if not df_eo.empty else 0
     l_7 = int(df_eo["l_87"].iloc[0]) if not df_eo.empty else 0
     l_8 = int(df_eo["l_88"].iloc[0]) if not df_eo.empty else 0
     lis_eo_total = l_n + l_f + l_7 + l_8
 
-    pad_final = max(pad_sex_total, pad_eo_total)
-    lis_final = max(lis_sex_total, lis_eo_total)
+    pad_final = max(pad_sex_total, pad_eo_total) if max(pad_sex_total, pad_eo_total) > 0 else pad_sex_total
+    lis_final = max(lis_sex_total, lis_eo_total) if max(lis_sex_total, lis_eo_total) > 0 else lis_sex_total
 
     return pd.DataFrame([{
         "padron": pad_final,
@@ -325,35 +298,26 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
     }])
   except Exception:
     return pd.DataFrame([{
-        "padron": 0,
-        "lista": 0,
-        "h_padron": 0,
-        "h_lista": 0,
-        "m_padron": 0,
-        "m_lista": 0,
-        "nb_padron": 0,
-        "nb_lista": 0,
-        "p_nat": 0,
-        "l_nat": 0,
-        "p_for": 0,
-        "l_for": 0,
-        "p_87": 0,
-        "l_87": 0,
-        "p_88": 0,
-        "l_88": 0,
+        "padron": 0, "lista": 0, "h_padron": 0, "h_lista": 0,
+        "m_padron": 0, "m_lista": 0, "nb_padron": 0, "nb_lista": 0,
+        "p_nat": 0, "l_nat": 0, "p_for": 0, "l_for": 0,
+        "p_87": 0, "l_87": 0, "p_88": 0, "l_88": 0,
     }])
 
 
 def renderizar_grafica_posicionamiento(
     corte, alcance_tipo, cve_ent, cve_dist, modo_comp=False, corte_base_comp=None
 ):
-  c_hp = col_exacta("PE_SEX", ["HOMBRE", "PADRON"], ["HOMBRE", "PAD"])
-  c_mp = col_exacta("PE_SEX", ["MUJER", "PADRON"], ["MUJER", "PAD"])
-  c_nbp = col_exacta("PE_SEX", ["BINARIO", "PADRON"], ["NB", "PAD"])
+  c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+  c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+  c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
+  c_hl = col_dinamica("PE_SEX", ["HOMBRE", "LIS"], ["HOMBRE", "LNE"])
+  c_ml = col_dinamica("PE_SEX", ["MUJER", "LIS"], ["MUJER", "LNE"])
+  c_nbl = col_dinamica("PE_SEX", ["BINARIO", "LIS"], ["NB", "LIS"], ["NO_BINARIO", "LIS"])
 
   if cve_ent:
     nom_entidad = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")
-    c_cab = col_exacta("PE_SEX", ["CABECERA"])
+    c_cab = col_dinamica("PE_SEX", ["CABECERA"])
 
     q_rec = f"""
             SELECT CLAVE_DISTRITO,
@@ -524,7 +488,77 @@ def renderizar_grafica_posicionamiento(
       with col_v2:
         st.plotly_chart(fig_crec, width="stretch")
     else:
-      st.plotly_chart(fig_vol, width="stretch")
+      q_cob = f"""
+                SELECT CLAVE_DISTRITO,
+                       SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) AS PADRON,
+                       SUM(CAST({c_hl} AS REAL) + CAST({c_ml} AS REAL) + CAST({c_nbl} AS REAL)) AS LISTA
+                FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') AND CLAVE_ENTIDAD = {cve_ent} AND CLAVE_DISTRITO != 0
+                GROUP BY CLAVE_DISTRITO
+            """
+      df_cob = pd.read_sql_query(q_cob, conn)
+      if df_cob.empty:
+        return
+      df_cob["COB"] = (df_cob["LISTA"] / df_cob["PADRON"]) * 100
+      df_cob = df_cob.sort_values(by="COB", ascending=True)
+      promedio_cob = (df_cob["LISTA"].sum() / df_cob["PADRON"].sum()) * 100
+
+      colores_cob = [
+          "#D946EF" if cve_dist and int(d) == int(cve_dist) else "#10B981"
+          for d in df_cob["CLAVE_DISTRITO"]
+      ]
+
+      fig_cob = go.Figure()
+      fig_cob.add_trace(
+          go.Bar(
+              y=df_rec.set_index("CLAVE_DISTRITO")
+              .loc[df_cob["CLAVE_DISTRITO"], "ETIQUETA"]
+              .tolist(),
+              x=df_cob["COB"],
+              orientation="h",
+              marker=dict(color=colores_cob, line=dict(width=0)),
+              text=[f"{x:.2f}%" for x in df_cob["COB"]],
+              textposition="inside",
+              insidetextanchor="middle",
+              textfont=dict(color="#FFFFFF", size=10),
+              hovertemplate=(
+                  "<b>%{y}</b><br>Cobertura: <b>%{x:.2f}%</b><extra></extra>"
+              ),
+          )
+      )
+      fig_cob.add_vline(
+          x=promedio_cob,
+          line_width=1.5,
+          line_dash="dash",
+          line_color="#F59E0B",
+          annotation_text=f"Media Estatal: {promedio_cob:.2f}%",
+          annotation_position="top right",
+          annotation_font=dict(size=10, color="#F59E0B"),
+      )
+      subtitulo_cob = (
+          f"<b>2. Cobertura Registral (%) por Distrito en {nom_entidad}</b>"
+          + (f" (Distrito {cve_dist:02d} resaltado)" if cve_dist else "")
+      )
+      fig_cob.update_layout(
+          title=dict(text=subtitulo_cob, font=dict(size=13, color="#E2E8F0")),
+          xaxis=dict(
+              title="Cobertura Registral (%)",
+              showgrid=True,
+              gridcolor="#334155",
+              zeroline=False,
+          ),
+          yaxis=dict(showgrid=False, tickfont=dict(size=10.5)),
+          plot_bgcolor="rgba(0,0,0,0)",
+          paper_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#94A3B8"),
+          margin=dict(l=20, r=20, t=40, b=30),
+          height=max(340, len(df_cob) * 32),
+      )
+
+      col_v1, col_v2 = st.columns(2)
+      with col_v1:
+        st.plotly_chart(fig_vol, width="stretch")
+      with col_v2:
+        st.plotly_chart(fig_cob, width="stretch")
 
   elif "Nacional" in alcance_tipo:
     if modo_comp and corte_base_comp:
@@ -726,7 +760,6 @@ def renderizar_grafica_posicionamiento(
       )
       st.plotly_chart(fig, width="stretch")
 
-
 # ==============================================================================
 # GENERACIÓN DE GRÁFICAS DE REPORTE PDF (MATPLOTLIB) - ROBUSTAS Y BLINDADAS
 # ==============================================================================
@@ -735,9 +768,9 @@ def generar_grafico_volumen_pdf(corte, cve_ent, cve_dist):
     if not cve_ent:
       return None
     nom_ent = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")
-    c_hp = col_exacta("PE_SEX", ["HOMBRE", "PADRON"], ["HOMBRE", "PAD"])
-    c_mp = col_exacta("PE_SEX", ["MUJER", "PADRON"], ["MUJER", "PAD"])
-    c_nbp = col_exacta("PE_SEX", ["BINARIO", "PADRON"], ["NB", "PAD"])
+    c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+    c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+    c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
 
     q = f"""
             SELECT CLAVE_DISTRITO,
@@ -788,18 +821,20 @@ def generar_grafico_volumen_pdf(corte, cve_ent, cve_dist):
     print(f"Error en generar_grafico_volumen_pdf: {e}")
     return None
 
-
 def generar_grafico_posicionamiento_pdf(
     corte, alcance_tipo, cve_ent, cve_dist, modo_comp=False, corte_base_comp=None
 ):
   try:
-    c_hp = col_exacta("PE_SEX", ["HOMBRE", "PADRON"], ["HOMBRE", "PAD"])
-    c_mp = col_exacta("PE_SEX", ["MUJER", "PADRON"], ["MUJER", "PAD"])
-    c_nbp = col_exacta("PE_SEX", ["BINARIO", "PADRON"], ["NB", "PAD"])
+    c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+    c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+    c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
+    c_hl = col_dinamica("PE_SEX", ["HOMBRE", "LIS"], ["HOMBRE", "LNE"])
+    c_ml = col_dinamica("PE_SEX", ["MUJER", "LIS"], ["MUJER", "LNE"])
+    c_nbl = col_dinamica("PE_SEX", ["BINARIO", "LIS"], ["NB", "LIS"], ["NO_BINARIO", "LIS"])
 
     if cve_ent:
       nom_ent = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")
-      c_cab = col_exacta("PE_SEX", ["CABECERA"])
+      c_cab = col_dinamica("PE_SEX", ["CABECERA"])
 
       if modo_comp and corte_base_comp:
         q_rec = f"""
@@ -814,53 +849,47 @@ def generar_grafico_posicionamiento_pdf(
                     FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_ENTIDAD = ? AND CLAVE_DISTRITO != 0
                     GROUP BY CLAVE_DISTRITO
                 """
-        df_r = pd.read_sql_query(
-            q_rec, conn, params=[str(corte).strip(), int(cve_ent)]
-        )
-        df_b = pd.read_sql_query(
-            q_bas, conn, params=[str(corte_base_comp).strip(), int(cve_ent)]
-        )
+        df_r = pd.read_sql_query(q_rec, conn, params=[str(corte).strip(), int(cve_ent)])
+        df_b = pd.read_sql_query(q_bas, conn, params=[str(corte_base_comp).strip(), int(cve_ent)])
         df = pd.merge(df_r, df_b, on="CLAVE_DISTRITO")
         if df.empty:
           return None
 
-        df["VALOR"] = (
-            (df["PADRON_REC"] - df["PADRON_BAS"]) / df["PADRON_BAS"]
-        ) * 100
+        df["VALOR"] = ((df["PADRON_REC"] - df["PADRON_BAS"]) / df["PADRON_BAS"]) * 100
         df = df.sort_values(by="VALOR", ascending=True)
-        promedio = (
-            (df["PADRON_REC"].sum() - df["PADRON_BAS"].sum())
-            / df["PADRON_BAS"].sum()
-        ) * 100
+        promedio = ((df["PADRON_REC"].sum() - df["PADRON_BAS"].sum()) / df["PADRON_BAS"].sum()) * 100
 
         colores = [
             "#D946EF" if cve_dist and int(d) == int(cve_dist) else "#64748B"
             for d in df["CLAVE_DISTRITO"]
         ]
         etiquetas = [f"Dist. {int(d):02d}" for d in df["CLAVE_DISTRITO"]]
-        titulo = (
-            f"2. Ritmo de Crecimiento del Padrón (%) en {nom_ent}"
-            + (f" (Dist. {cve_dist:02d} resaltado)" if cve_dist else "")
-        )
+        titulo = f"2. Ritmo de Crecimiento del Padrón (%) en {nom_ent}" + (f" (Dist. {cve_dist:02d} resaltado)" if cve_dist else "")
         x_label = "Variación Porcentual (%)"
 
       else:
-        q_cob = f"""
+        q = f"""
                     SELECT CLAVE_DISTRITO,
-                           SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) AS PADRON
+                           SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) AS PADRON,
+                           SUM(CAST({c_hl} AS REAL) + CAST({c_ml} AS REAL) + CAST({c_nbl} AS REAL)) AS LISTA
                     FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_ENTIDAD = ? AND CLAVE_DISTRITO != 0
                     GROUP BY CLAVE_DISTRITO
                 """
-        df = pd.read_sql_query(q_cob, conn, params=[str(corte).strip(), int(cve_ent)])
+        df = pd.read_sql_query(q, conn, params=[str(corte).strip(), int(cve_ent)])
         if df.empty:
           return None
-        df["VALOR"] = df["PADRON"]
+
+        df["VALOR"] = (df["LISTA"] / df["PADRON"]) * 100
         df = df.sort_values(by="VALOR", ascending=True)
-        promedio = df["VALOR"].mean()
-        colores = ["#3B82F6" for d in df["CLAVE_DISTRITO"]]
+        promedio = (df["LISTA"].sum() / df["PADRON"].sum()) * 100
+
+        colores = [
+            "#D946EF" if cve_dist and int(d) == int(cve_dist) else "#10B981"
+            for d in df["CLAVE_DISTRITO"]
+        ]
         etiquetas = [f"Dist. {int(d):02d}" for d in df["CLAVE_DISTRITO"]]
-        titulo = f"Volumen Distrital en {nom_ent}"
-        x_label = "Padrón Electoral"
+        titulo = f"2. Cobertura Registral (%) en {nom_ent}" + (f" (Dist. {cve_dist:02d} resaltado)" if cve_dist else "")
+        x_label = "Cobertura Registral (%)"
 
       alt = max(2.2, min(4.0, len(df) * 0.25))
       plt.figure(figsize=(6.8, alt))
@@ -870,7 +899,7 @@ def generar_grafico_posicionamiento_pdf(
           color="#F59E0B",
           linestyle="--",
           linewidth=1.2,
-          label=f"Media: {promedio:,.2f}",
+          label=f"Media: {promedio:.2f}%",
       )
       plt.title(titulo, fontsize=9, fontweight="bold", color="#4A2E7A")
       plt.xlabel(x_label, fontsize=8)
@@ -887,16 +916,14 @@ def generar_grafico_posicionamiento_pdf(
   except Exception as e:
     print(f"Error en generar_grafico_posicionamiento_pdf: {e}")
     return None
-  return None
-
 
 def generar_grafico_distritos_menor_1(corte_rec, corte_bas):
   try:
     if not corte_bas:
       return None
-    c_hp = col_exacta("PE_SEX", ["HOMBRE", "PADRON"], ["HOMBRE", "PAD"])
-    c_mp = col_exacta("PE_SEX", ["MUJER", "PADRON"], ["MUJER", "PAD"])
-    c_nbp = col_exacta("PE_SEX", ["BINARIO", "PADRON"], ["NB", "PAD"])
+    c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+    c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+    c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
 
     q_rec = f"""
             SELECT CLAVE_ENTIDAD, CLAVE_DISTRITO,
@@ -972,14 +999,13 @@ def generar_grafico_distritos_menor_1(corte_rec, corte_bas):
     print(f"Error en generar_grafico_distritos_menor_1: {e}")
     return None
 
-
 def generar_grafico_distritos_mayor_10(corte_rec, corte_bas):
   try:
     if not corte_bas:
       return None
-    c_hp = col_exacta("PE_SEX", ["HOMBRE", "PADRON"], ["HOMBRE", "PAD"])
-    c_mp = col_exacta("PE_SEX", ["MUJER", "PADRON"], ["MUJER", "PAD"])
-    c_nbp = col_exacta("PE_SEX", ["BINARIO", "PADRON"], ["NB", "PAD"])
+    c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+    c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+    c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
 
     q_rec = f"""
             SELECT CLAVE_ENTIDAD, CLAVE_DISTRITO,
@@ -1054,17 +1080,21 @@ def generar_grafico_distritos_mayor_10(corte_rec, corte_bas):
     print(f"Error en generar_grafico_distritos_mayor_10: {e}")
     return None
 
-
 def generar_grafico_top_jovenes(corte):
   try:
     tables = pd.read_sql_query(
         "SELECT name FROM sqlite_master WHERE type='table'", conn
     )["name"].tolist()
     if "PE_RE" in tables:
-      q = """
+      c_pj = col_dinamica("PE_RE", ["18", "19", "PAD"], ["18", "19", "PE"], exclude=["HOMBRE", "MUJER", "BINARIO"])
+      c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+      c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+      c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
+
+      q = f"""
                 SELECT CLAVE_ENTIDAD, 
-                       (SUM(CAST("PE_JOVENES_18_19" AS REAL)) * 100.0 / 
-                        NULLIF((SELECT SUM(CAST("PADRON_ELECTORAL" AS REAL)) FROM PE_SEX S WHERE TRIM(S.FECHA_CORTE) = TRIM(PE_RE.FECHA_CORTE) AND S.CLAVE_ENTIDAD = PE_RE.CLAVE_ENTIDAD), 0)) AS pct_jovenes
+                       (SUM(CAST({c_pj} AS REAL)) * 100.0 / 
+                        NULLIF((SELECT SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) FROM PE_SEX S WHERE TRIM(S.FECHA_CORTE) = TRIM(PE_RE.FECHA_CORTE) AND S.CLAVE_ENTIDAD = PE_RE.CLAVE_ENTIDAD), 0)) AS pct_jovenes
                 FROM PE_RE WHERE TRIM(FECHA_CORTE) = TRIM(?)
                 GROUP BY CLAVE_ENTIDAD ORDER BY pct_jovenes DESC LIMIT 5
             """
@@ -1094,17 +1124,21 @@ def generar_grafico_top_jovenes(corte):
     print(f"Error en generar_grafico_top_jovenes: {e}")
   return None
 
-
 def generar_grafico_top_mayores(corte):
   try:
     tables = pd.read_sql_query(
         "SELECT name FROM sqlite_master WHERE type='table'", conn
     )["name"].tolist()
     if "PE_RE" in tables:
-      q = """
+      c_pm = col_dinamica("PE_RE", ["65", "PAD"], ["65", "PE"], exclude=["HOMBRE", "MUJER", "BINARIO"])
+      c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+      c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+      c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
+
+      q = f"""
                 SELECT CLAVE_ENTIDAD, 
-                       (SUM(CAST("PE_MAS_DE_65" AS REAL)) * 100.0 / 
-                        NULLIF((SELECT SUM(CAST("PADRON_ELECTORAL" AS REAL)) FROM PE_SEX S WHERE TRIM(S.FECHA_CORTE) = TRIM(PE_RE.FECHA_CORTE) AND S.CLAVE_ENTIDAD = PE_RE.CLAVE_ENTIDAD), 0)) AS pct_mayores
+                       (SUM(CAST({c_pm} AS REAL)) * 100.0 / 
+                        NULLIF((SELECT SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) FROM PE_SEX S WHERE TRIM(S.FECHA_CORTE) = TRIM(PE_RE.FECHA_CORTE) AND S.CLAVE_ENTIDAD = PE_RE.CLAVE_ENTIDAD), 0)) AS pct_mayores
                 FROM PE_RE WHERE TRIM(FECHA_CORTE) = TRIM(?)
                 GROUP BY CLAVE_ENTIDAD ORDER BY pct_mayores DESC LIMIT 5
             """
@@ -1134,12 +1168,11 @@ def generar_grafico_top_mayores(corte):
     print(f"Error en generar_grafico_top_mayores: {e}")
   return None
 
-
 def generar_grafico_top_extranjero(corte):
   try:
-    c_pnat = col_exacta("PE_EO", ["PADRON", "NATIVO"])
-    c_pfor = col_exacta("PE_EO", ["PADRON", "FORANEO"])
-    c_pnat_z = col_exacta("PE_EO", ["NATURALIZADO"])
+    c_pnat = col_dinamica("PE_EO", ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"])
+    c_pfor = col_dinamica("PE_EO", ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"])
+    c_pnat_z = col_dinamica("PE_EO", ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"])
     q = f"""
             SELECT CLAVE_ENTIDAD, 
                    (SUM(CAST(COALESCE({c_pnat},0) + COALESCE({c_pfor},0) + COALESCE({c_pnat_z},0) AS REAL)) * 100.0 / 
@@ -1178,15 +1211,12 @@ def generar_grafico_top_extranjero(corte):
     print(f"Error en generar_grafico_top_extranjero: {e}")
   return None
 
-
 def generar_grafico_distritos_foraneos(corte):
   try:
-    c_pnat = col_exacta("PE_EO", ["PADRON", "NATIVO"])
-    c_pfor = col_exacta("PE_EO", ["PADRON", "FORANEO"])
-    c_p88 = col_exacta("PE_EO", ["PADRON", "NATURALIZADO"], ["PADRON", "88"])
-    c_p87 = col_exacta(
-        "PE_EO", ["PADRON", "HIJO"], ["PADRON", "HIJO_DE_PADRES_MEXICANOS"]
-    )
+    c_pnat = col_dinamica("PE_EO", ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"])
+    c_pfor = col_dinamica("PE_EO", ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"])
+    c_p88 = col_dinamica("PE_EO", ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"])
+    c_p87 = col_dinamica("PE_EO", ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"])
 
     q = f"""
             SELECT CLAVE_ENTIDAD, CLAVE_DISTRITO,
@@ -1229,14 +1259,13 @@ def generar_grafico_distritos_foraneos(corte):
     print(f"Error en generar_grafico_distritos_foraneos: {e}")
   return None
 
-
 def generar_analisis_distrital_texto(corte_rec, corte_bas):
   try:
     if not corte_bas:
       return ""
-    c_hp = col_exacta("PE_SEX", ["HOMBRE", "PADRON"], ["HOMBRE", "PAD"])
-    c_mp = col_exacta("PE_SEX", ["MUJER", "PADRON"], ["MUJER", "PAD"])
-    c_nbp = col_exacta("PE_SEX", ["BINARIO", "PADRON"], ["NB", "PAD"])
+    c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+    c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+    c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
 
     q_rec = f"""
             SELECT CLAVE_ENTIDAD, CLAVE_DISTRITO,
@@ -1292,14 +1321,13 @@ def generar_analisis_distrital_texto(corte_rec, corte_bas):
     pass
   return ""
 
-
 def generar_analisis_positivo_texto(corte_rec, corte_bas):
   try:
     if not corte_bas:
       return ""
-    c_hp = col_exacta("PE_SEX", ["HOMBRE", "PADRON"], ["HOMBRE", "PAD"])
-    c_mp = col_exacta("PE_SEX", ["MUJER", "PADRON"], ["MUJER", "PAD"])
-    c_nbp = col_exacta("PE_SEX", ["BINARIO", "PADRON"], ["NB", "PAD"])
+    c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+    c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+    c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
 
     q_rec = f"""
             SELECT CLAVE_ENTIDAD, CLAVE_DISTRITO,
@@ -1349,15 +1377,12 @@ def generar_analisis_positivo_texto(corte_rec, corte_bas):
     pass
   return ""
 
-
 def generar_analisis_foraneos_texto(corte_rec):
   try:
-    c_pnat = col_exacta("PE_EO", ["PADRON", "NATIVO"])
-    c_pfor = col_exacta("PE_EO", ["PADRON", "FORANEO"])
-    c_p88 = col_exacta("PE_EO", ["PADRON", "NATURALIZADO"], ["PADRON", "88"])
-    c_p87 = col_exacta(
-        "PE_EO", ["PADRON", "HIJO"], ["PADRON", "HIJO_DE_PADRES_MEXICANOS"]
-    )
+    c_pnat = col_dinamica("PE_EO", ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"])
+    c_pfor = col_dinamica("PE_EO", ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"])
+    c_p88 = col_dinamica("PE_EO", ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"])
+    c_p87 = col_dinamica("PE_EO", ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"])
 
     q_ent = f"""
             SELECT CLAVE_ENTIDAD,
@@ -1392,8 +1417,6 @@ def generar_analisis_foraneos_texto(corte_rec):
   except Exception:
     pass
   return ""
-
-
 # ==============================================================================
 # CLASE DE CONTROL DOCUMENTAL Y NUMERACIÓN DE PÁGINAS FORMAL (REPORTLAB)
 # ==============================================================================
@@ -2157,29 +2180,18 @@ target_eo = "PE_EO" if "PE_EO" in tables_db_sidebar else None
 pjov_1, ljov_1, pjov_2, ljov_2 = 0, 0, 0, 0
 pmay_1, lmay_1, pmay_2, lmay_2 = 0, 0, 0, 0
 p_nat_1, l_nat_1, p_for_1, l_for_1, p_87_1, l_87_1, p_88_1, l_88_1 = (
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
+    0, 0, 0, 0, 0, 0, 0, 0
 )
 p_nat_2, l_nat_2, p_for_2, l_for_2, p_87_2, l_87_2, p_88_2, l_88_2 = (
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
+    0, 0, 0, 0, 0, 0, 0, 0
 )
 
 with tab_jovenes:
   if target_re:
-    q1 = f'SELECT SUM(CAST("PE_JOVENES_18_19" AS REAL)) AS p, SUM(CAST("LNE_JOVENES_18_19" AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_reciente}") {sql_filtro_geo}'
+    c_pj = col_dinamica(target_re, ["18", "19", "PAD"], ["18", "19", "PE"], ["18_19", "PAD"], exclude=["HOMBRE", "MUJER", "BINARIO"])
+    c_lj = col_dinamica(target_re, ["18", "19", "LIS"], ["18", "19", "LNE"], ["18_19", "LIS"], exclude=["HOMBRE", "MUJER", "BINARIO"])
+
+    q1 = f'SELECT SUM(CAST({c_pj} AS REAL)) AS p, SUM(CAST({c_lj} AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_reciente}") {sql_filtro_geo}'
     try:
       df_tmp = pd.read_sql_query(q1, conn)
       pjov_1 = int(df_tmp["p"].iloc[0] or 0)
@@ -2188,7 +2200,7 @@ with tab_jovenes:
       pass
 
     if modo == "Comparar con Periodo Previo" and corte_base:
-      q2 = f'SELECT SUM(CAST("PE_JOVENES_18_19" AS REAL)) AS p, SUM(CAST("LNE_JOVENES_18_19" AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_base}") {sql_filtro_geo}'
+      q2 = f'SELECT SUM(CAST({c_pj} AS REAL)) AS p, SUM(CAST({c_lj} AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_base}") {sql_filtro_geo}'
       try:
         df_tmp2 = pd.read_sql_query(q2, conn)
         pjov_2 = int(df_tmp2["p"].iloc[0] or 0)
@@ -2233,7 +2245,10 @@ with tab_jovenes:
 
 with tab_mayores:
   if target_re:
-    q1 = f'SELECT SUM(CAST("PE_MAS_DE_65" AS REAL)) AS p, SUM(CAST("LNE_MAS_DE_65" AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_reciente}") {sql_filtro_geo}'
+    c_pm = col_dinamica(target_re, ["65", "PAD"], ["65", "PE"], ["MAS_DE_65", "PAD"], exclude=["HOMBRE", "MUJER", "BINARIO"])
+    c_lm = col_dinamica(target_re, ["65", "LIS"], ["65", "LNE"], ["MAS_DE_65", "LIS"], exclude=["HOMBRE", "MUJER", "BINARIO"])
+
+    q1 = f'SELECT SUM(CAST({c_pm} AS REAL)) AS p, SUM(CAST({c_lm} AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_reciente}") {sql_filtro_geo}'
     try:
       df_tmp = pd.read_sql_query(q1, conn)
       pmay_1 = int(df_tmp["p"].iloc[0] or 0)
@@ -2242,7 +2257,7 @@ with tab_mayores:
       pass
 
     if modo == "Comparar con Periodo Previo" and corte_base:
-      q2 = f'SELECT SUM(CAST("PE_MAS_DE_65" AS REAL)) AS p, SUM(CAST("LNE_MAS_DE_65" AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_base}") {sql_filtro_geo}'
+      q2 = f'SELECT SUM(CAST({c_pm} AS REAL)) AS p, SUM(CAST({c_lm} AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_base}") {sql_filtro_geo}'
       try:
         df_tmp2 = pd.read_sql_query(q2, conn)
         pmay_2 = int(df_tmp2["p"].iloc[0] or 0)
@@ -2292,22 +2307,14 @@ with tab_origen:
   )
   if target_eo:
     try:
-      c_pnat = col_exacta("PE_EO", ["PADRON", "NATIVO"])
-      c_lnat = col_exacta("PE_EO", ["LISTA", "NATIVO"], ["LNE", "NATIVO"])
-      c_pfor = col_exacta("PE_EO", ["PADRON", "FORANEO"])
-      c_lfor = col_exacta("PE_EO", ["LISTA", "FORANEO"], ["LNE", "FORANEO"])
-      c_p87 = col_exacta(
-          "PE_EO",
-          ["PADRON", "HIJO"],
-          ["PADRON", "MEXICANO"],
-      )
-      c_l87 = col_exacta("PE_EO", ["LISTA", "HIJO"], ["LNE", "HIJO"])
-      c_p88 = col_exacta(
-          "PE_EO", ["PADRON", "NATURALIZADO"], ["PADRON", "88"]
-      )
-      c_l88 = col_exacta(
-          "PE_EO", ["LISTA", "NATURALIZADO"], ["LNE", "NATURALIZADO"]
-      )
+      c_pnat = col_dinamica("PE_EO", ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"])
+      c_lnat = col_dinamica("PE_EO", ["NATIVO", "LIS"], ["NATIVO", "LNE"], ["NAT", "LIS"])
+      c_pfor = col_dinamica("PE_EO", ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"])
+      c_lfor = col_dinamica("PE_EO", ["FORANEO", "LIS"], ["FORANEO", "LNE"], ["FOR", "LIS"])
+      c_p87 = col_dinamica("PE_EO", ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"])
+      c_l87 = col_dinamica("PE_EO", ["HIJO", "LIS"], ["HIJO", "LNE"], ["MEXICANO", "LIS"])
+      c_p88 = col_dinamica("PE_EO", ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"])
+      c_l88 = col_dinamica("PE_EO", ["NATURALIZADO", "LIS"], ["NATURALIZADO", "LNE"], ["88", "LIS"])
 
       q_eo1 = f"""
                 SELECT 
