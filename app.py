@@ -36,14 +36,13 @@ if ARCHIVE_7Z_PATH.exists():
     necesita_extraccion = False
     if not DB_PATH.exists():
         necesita_extraccion = True
-    # Si el .7z es más reciente que la base de datos actual, fuerza la extracción
     elif ARCHIVE_7Z_PATH.stat().st_mtime > DB_PATH.stat().st_mtime:
         necesita_extraccion = True
 
     if necesita_extraccion:
         try:
             if DB_PATH.exists():
-                DB_PATH.unlink()  # Elimina la base de datos obsoleta del servidor
+                DB_PATH.unlink()
             with py7zr.SevenZipFile(ARCHIVE_7Z_PATH, mode="r") as z:
                 z.extractall(path=DIR_RAIZ)
         except Exception as e:
@@ -81,7 +80,6 @@ except Exception:
   pass
 
 
-# ELIMINAMOS @st.cache_resource PARA EVITAR LA "CONEXIÓN FANTASMA"
 def get_conn():
   if not DB_PATH.exists():
     st.error(
@@ -353,7 +351,6 @@ def renderizar_grafica_posicionamiento(
   c_mp = col_exacta("PE_SEX", ["MUJER", "PADRON"], ["MUJER", "PAD"])
   c_nbp = col_exacta("PE_SEX", ["BINARIO", "PADRON"], ["NB", "PAD"])
 
-  # CASO 1: ÁMBITO DISTRITAL / ESTATAL
   if cve_ent:
     nom_entidad = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")
     c_cab = col_exacta("PE_SEX", ["CABECERA"])
@@ -529,7 +526,6 @@ def renderizar_grafica_posicionamiento(
     else:
       st.plotly_chart(fig_vol, width="stretch")
 
-  # CASO 2: ÁMBITO NACIONAL (LAS 32 ENTIDADES)
   elif "Nacional" in alcance_tipo:
     if modo_comp and corte_base_comp:
       q_rec = f"""
@@ -552,7 +548,6 @@ def renderizar_grafica_posicionamiento(
       ) * 100
       df["ENTIDAD"] = df["CLAVE_ENTIDAD"].map(CATALOGO_ENTIDADES)
 
-      # Gráfica Nacional 1: Volumen por Entidad
       df_vol_nal = df.sort_values(by="PADRON_REC", ascending=True).copy()
       prom_vol_nal = df_vol_nal["PADRON_REC"].mean()
 
@@ -603,7 +598,6 @@ def renderizar_grafica_posicionamiento(
           height=780,
       )
 
-      # Gráfica Nacional 2: Ritmo de Crecimiento %
       df_crec_nal = df.sort_values(by="CREC_PCT", ascending=True).copy()
       prom_crec_nal = (
           (df["PADRON_REC"].sum() - df["PADRON_BAS"].sum())
@@ -734,7 +728,7 @@ def renderizar_grafica_posicionamiento(
 
 
 # ==============================================================================
-# GENERACIÓN DE GRÁFICAS DE REPORTE PDF (MATPLOTLIB)
+# GENERACIÓN DE GRÁFICAS DE REPORTE PDF (MATPLOTLIB) - ROBUSTAS Y BLINDADAS
 # ==============================================================================
 def generar_grafico_volumen_pdf(corte, cve_ent, cve_dist):
   try:
@@ -751,7 +745,7 @@ def generar_grafico_volumen_pdf(corte, cve_ent, cve_dist):
             FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_ENTIDAD = ? AND CLAVE_DISTRITO != 0
             GROUP BY CLAVE_DISTRITO ORDER BY PADRON ASC
         """
-    df = pd.read_sql_query(q, conn, params=[corte, cve_ent])
+    df = pd.read_sql_query(q, conn, params=[str(corte).strip(), int(cve_ent)])
     if df.empty:
       return None
 
@@ -790,7 +784,8 @@ def generar_grafico_volumen_pdf(corte, cve_ent, cve_dist):
     plt.close()
     buf.seek(0)
     return buf
-  except Exception:
+  except Exception as e:
+    print(f"Error en generar_grafico_volumen_pdf: {e}")
     return None
 
 
@@ -819,8 +814,12 @@ def generar_grafico_posicionamiento_pdf(
                     FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_ENTIDAD = ? AND CLAVE_DISTRITO != 0
                     GROUP BY CLAVE_DISTRITO
                 """
-        df_r = pd.read_sql_query(q_rec, conn, params=[corte, cve_ent])
-        df_b = pd.read_sql_query(q_bas, conn, params=[corte_base_comp, cve_ent])
+        df_r = pd.read_sql_query(
+            q_rec, conn, params=[str(corte).strip(), int(cve_ent)]
+        )
+        df_b = pd.read_sql_query(
+            q_bas, conn, params=[str(corte_base_comp).strip(), int(cve_ent)]
+        )
         df = pd.merge(df_r, df_b, on="CLAVE_DISTRITO")
         if df.empty:
           return None
@@ -846,31 +845,22 @@ def generar_grafico_posicionamiento_pdf(
         x_label = "Variación Porcentual (%)"
 
       else:
-        q = f"""
+        q_cob = f"""
                     SELECT CLAVE_DISTRITO,
-                           SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) AS PADRON,
-                           SUM(CAST({c_hl} AS REAL) + CAST({c_ml} AS REAL) + CAST({c_nbl} AS REAL)) AS LISTA
+                           SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) AS PADRON
                     FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_ENTIDAD = ? AND CLAVE_DISTRITO != 0
                     GROUP BY CLAVE_DISTRITO
                 """
-        df = pd.read_sql_query(q, conn, params=[corte, cve_ent])
+        df = pd.read_sql_query(q_cob, conn, params=[str(corte).strip(), int(cve_ent)])
         if df.empty:
           return None
-
-        df["VALOR"] = (df["LISTA"] / df["PADRON"]) * 100
+        df["VALOR"] = df["PADRON"]
         df = df.sort_values(by="VALOR", ascending=True)
-        promedio = (df["LISTA"].sum() / df["PADRON"].sum()) * 100
-
-        colores = [
-            "#D946EF" if cve_dist and int(d) == int(cve_dist) else "#3B82F6"
-            for d in df["CLAVE_DISTRITO"]
-        ]
+        promedio = df["VALOR"].mean()
+        colores = ["#3B82F6" for d in df["CLAVE_DISTRITO"]]
         etiquetas = [f"Dist. {int(d):02d}" for d in df["CLAVE_DISTRITO"]]
-        titulo = (
-            f"Cobertura Registral (%) por Distrito en {nom_ent}"
-            + (f" (Dist. {cve_dist:02d} resaltado)" if cve_dist else "")
-        )
-        x_label = "Cobertura Registral (%)"
+        titulo = f"Volumen Distrital en {nom_ent}"
+        x_label = "Padrón Electoral"
 
       alt = max(2.2, min(4.0, len(df) * 0.25))
       plt.figure(figsize=(6.8, alt))
@@ -880,7 +870,7 @@ def generar_grafico_posicionamiento_pdf(
           color="#F59E0B",
           linestyle="--",
           linewidth=1.2,
-          label=f"Media: {promedio:.2f}%",
+          label=f"Media: {promedio:,.2f}",
       )
       plt.title(titulo, fontsize=9, fontweight="bold", color="#4A2E7A")
       plt.xlabel(x_label, fontsize=8)
@@ -894,14 +884,12 @@ def generar_grafico_posicionamiento_pdf(
       plt.close()
       buf.seek(0)
       return buf
-  except Exception:
-    pass
+  except Exception as e:
+    print(f"Error en generar_grafico_posicionamiento_pdf: {e}")
+    return None
   return None
 
 
-# ==============================================================================
-# GRÁFICA DE MENOR DINAMISMO (<= 1.0%)
-# ==============================================================================
 def generar_grafico_distritos_menor_1(corte_rec, corte_bas):
   try:
     if not corte_bas:
@@ -922,8 +910,8 @@ def generar_grafico_distritos_menor_1(corte_rec, corte_bas):
             FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_DISTRITO != 0
             GROUP BY CLAVE_ENTIDAD, CLAVE_DISTRITO
         """
-    df_rec = pd.read_sql_query(q_rec, conn, params=[corte_rec])
-    df_bas = pd.read_sql_query(q_bas, conn, params=[corte_bas])
+    df_rec = pd.read_sql_query(q_rec, conn, params=[str(corte_rec).strip()])
+    df_bas = pd.read_sql_query(q_bas, conn, params=[str(corte_bas).strip()])
     df_merged = pd.merge(
         df_rec,
         df_bas,
@@ -980,13 +968,11 @@ def generar_grafico_distritos_menor_1(corte_rec, corte_bas):
     plt.close(fig)
     buf.seek(0)
     return buf
-  except Exception:
+  except Exception as e:
+    print(f"Error en generar_grafico_distritos_menor_1: {e}")
     return None
 
 
-# ==============================================================================
-# GRÁFICA DE ALTA EXPANSIÓN (>= 10.0%)
-# ==============================================================================
 def generar_grafico_distritos_mayor_10(corte_rec, corte_bas):
   try:
     if not corte_bas:
@@ -1007,8 +993,8 @@ def generar_grafico_distritos_mayor_10(corte_rec, corte_bas):
             FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_DISTRITO != 0
             GROUP BY CLAVE_ENTIDAD, CLAVE_DISTRITO
         """
-    df_rec = pd.read_sql_query(q_rec, conn, params=[corte_rec])
-    df_bas = pd.read_sql_query(q_bas, conn, params=[corte_bas])
+    df_rec = pd.read_sql_query(q_rec, conn, params=[str(corte_rec).strip()])
+    df_bas = pd.read_sql_query(q_bas, conn, params=[str(corte_bas).strip()])
     df_merged = pd.merge(
         df_rec,
         df_bas,
@@ -1064,7 +1050,8 @@ def generar_grafico_distritos_mayor_10(corte_rec, corte_bas):
     plt.close(fig)
     buf.seek(0)
     return buf
-  except Exception:
+  except Exception as e:
+    print(f"Error en generar_grafico_distritos_mayor_10: {e}")
     return None
 
 
@@ -1081,7 +1068,7 @@ def generar_grafico_top_jovenes(corte):
                 FROM PE_RE WHERE TRIM(FECHA_CORTE) = TRIM(?)
                 GROUP BY CLAVE_ENTIDAD ORDER BY pct_jovenes DESC LIMIT 5
             """
-      df = pd.read_sql_query(q, conn, params=[corte])
+      df = pd.read_sql_query(q, conn, params=[str(corte).strip()])
       if not df.empty and df["pct_jovenes"].sum() > 0:
         df = df.sort_values(by="pct_jovenes", ascending=True)
         df["ENTIDAD"] = df["CLAVE_ENTIDAD"].map(CATALOGO_ENTIDADES)
@@ -1103,8 +1090,8 @@ def generar_grafico_top_jovenes(corte):
         plt.close()
         buf.seek(0)
         return buf
-  except Exception:
-    pass
+  except Exception as e:
+    print(f"Error en generar_grafico_top_jovenes: {e}")
   return None
 
 
@@ -1121,7 +1108,7 @@ def generar_grafico_top_mayores(corte):
                 FROM PE_RE WHERE TRIM(FECHA_CORTE) = TRIM(?)
                 GROUP BY CLAVE_ENTIDAD ORDER BY pct_mayores DESC LIMIT 5
             """
-      df = pd.read_sql_query(q, conn, params=[corte])
+      df = pd.read_sql_query(q, conn, params=[str(corte).strip()])
       if not df.empty and df["pct_mayores"].sum() > 0:
         df = df.sort_values(by="pct_mayores", ascending=True)
         df["ENTIDAD"] = df["CLAVE_ENTIDAD"].map(CATALOGO_ENTIDADES)
@@ -1143,8 +1130,8 @@ def generar_grafico_top_mayores(corte):
         plt.close()
         buf.seek(0)
         return buf
-  except Exception:
-    pass
+  except Exception as e:
+    print(f"Error en generar_grafico_top_mayores: {e}")
   return None
 
 
@@ -1160,7 +1147,7 @@ def generar_grafico_top_extranjero(corte):
             FROM PE_EO WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_MUNICIPIO = 0
             GROUP BY CLAVE_ENTIDAD ORDER BY pct_ext DESC LIMIT 5
         """
-    df = pd.read_sql_query(q, conn, params=[corte, corte])
+    df = pd.read_sql_query(q, conn, params=[str(corte).strip(), str(corte).strip()])
     if df.empty:
       return None
     df = df.sort_values(by="pct_ext", ascending=True)
@@ -1187,8 +1174,8 @@ def generar_grafico_top_extranjero(corte):
     plt.close()
     buf.seek(0)
     return buf
-  except Exception:
-    pass
+  except Exception as e:
+    print(f"Error en generar_grafico_top_extranjero: {e}")
   return None
 
 
@@ -1208,7 +1195,7 @@ def generar_grafico_distritos_foraneos(corte):
             FROM PE_EO WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_DISTRITO != 0
             GROUP BY CLAVE_ENTIDAD, CLAVE_DISTRITO ORDER BY pct_foraneo DESC LIMIT 10
         """
-    df = pd.read_sql_query(q, conn, params=[corte])
+    df = pd.read_sql_query(q, conn, params=[str(corte).strip()])
     if df.empty:
       return None
 
@@ -1238,8 +1225,8 @@ def generar_grafico_distritos_foraneos(corte):
     plt.close()
     buf.seek(0)
     return buf
-  except Exception:
-    pass
+  except Exception as e:
+    print(f"Error en generar_grafico_distritos_foraneos: {e}")
   return None
 
 
@@ -1263,8 +1250,8 @@ def generar_analisis_distrital_texto(corte_rec, corte_bas):
             FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_DISTRITO != 0
             GROUP BY CLAVE_ENTIDAD, CLAVE_DISTRITO
         """
-    df_rec = pd.read_sql_query(q_rec, conn, params=[corte_rec])
-    df_bas = pd.read_sql_query(q_bas, conn, params=[corte_bas])
+    df_rec = pd.read_sql_query(q_rec, conn, params=[str(corte_rec).strip()])
+    df_bas = pd.read_sql_query(q_bas, conn, params=[str(corte_bas).strip()])
     df_merged = pd.merge(
         df_rec,
         df_bas,
@@ -1326,8 +1313,8 @@ def generar_analisis_positivo_texto(corte_rec, corte_bas):
             FROM PE_SEX WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_DISTRITO != 0
             GROUP BY CLAVE_ENTIDAD, CLAVE_DISTRITO
         """
-    df_rec = pd.read_sql_query(q_rec, conn, params=[corte_rec])
-    df_bas = pd.read_sql_query(q_bas, conn, params=[corte_bas])
+    df_rec = pd.read_sql_query(q_rec, conn, params=[str(corte_rec).strip()])
+    df_bas = pd.read_sql_query(q_bas, conn, params=[str(corte_bas).strip()])
     df_merged = pd.merge(
         df_rec,
         df_bas,
@@ -1379,7 +1366,7 @@ def generar_analisis_foraneos_texto(corte_rec):
             FROM PE_EO WHERE TRIM(FECHA_CORTE) = TRIM(?) AND CLAVE_MUNICIPIO != 0
             GROUP BY CLAVE_ENTIDAD ORDER BY pct_foraneo DESC
         """
-    df_ent = pd.read_sql_query(q_ent, conn, params=[corte_rec])
+    df_ent = pd.read_sql_query(q_ent, conn, params=[str(corte_rec).strip()])
     if df_ent.empty:
       return ""
 
@@ -1453,7 +1440,7 @@ class NumberedCanvas(canvas.Canvas):
 
 
 # ==============================================================================
-# REPORTE PDF EJECUTIVO CON FLUJO NATURAL Y GRÁFICAS EN PARALELO (SIN HUECOS)
+# REPORTE PDF EJECUTIVO
 # ==============================================================================
 def generar_pdf_reporte(
     titulo_alcance,
@@ -2138,9 +2125,6 @@ else:
     st.metric("Lista Nominal No Binarios", f"{nb_lista_1:,}")
     st.text(f"Cobertura: {nbcob_1:.2f}%")
 
-# ==============================================================================
-# SECCIÓN COMPARATIVA GEOGRÁFICA INTERACTIVA (FOCUS + CONTEXT)
-# ==============================================================================
 if "Nacional" in alcance or cve_entidad_activa:
   st.markdown("---")
   with st.expander(
