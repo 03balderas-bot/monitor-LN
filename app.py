@@ -281,20 +281,28 @@ def consultar_datos_jovenes_seguro(corte, condicion_where):
         if not c_ljov: c_ljov = col_dinamica(tabla_edad, ["18", "LIS"], exclude=["PAD", "PE"])
 
         if not c_pjov or not c_ljov:
-            st.warning(f"⚠️ Columnas de jóvenes no encontradas en la tabla {tabla_edad}")
+            st.warning(f"⚠️ Columnas de jóvenes no encontradas en {tabla_edad}")
             return 0, 0
 
-        # Evitar error SQL si la tabla no tiene columnas geográficas (ej. CLAVE_ENTIDAD)
         cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad})", conn)["name"].tolist()
         cond_segura = condicion_where if "CLAVE_ENTIDAD" in cols_tabla or "CLAVE_ENTIDAD" not in condicion_where else ""
 
-        q = f"SELECT COALESCE(SUM(CAST({c_pjov} AS REAL)), 0) AS p, COALESCE(SUM(CAST({c_ljov} AS REAL)), 0) AS l FROM {tabla_edad} WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {cond_segura}"
+        # Estandarizar fechas quitando guiones para que '2026-10-08' coincida con '20261008'
+        corte_limpio = corte.replace("-", "").replace("_", "")
+        q = f"SELECT COALESCE(SUM(CAST({c_pjov} AS REAL)), 0) AS p, COALESCE(SUM(CAST({c_ljov} AS REAL)), 0) AS l FROM {tabla_edad} WHERE REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '') = '{corte_limpio}' {cond_segura}"
+        
         df_tmp = pd.read_sql_query(q, conn)
-        return int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0), int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
+        p_val = int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0)
+        l_val = int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
+        
+        if p_val == 0:
+            fechas = pd.read_sql_query(f"SELECT DISTINCT FECHA_CORTE FROM {tabla_edad} LIMIT 3", conn)
+            st.warning(f"⚠️ Jóvenes dio 0. Fechas disponibles en {tabla_edad}: {fechas['FECHA_CORTE'].tolist()}")
+            
+        return p_val, l_val
     except Exception as e:
         st.error(f"🛑 Error SQL Jóvenes: {e}")
         return 0, 0
-
 
 def consultar_datos_mayores_seguro(corte, condicion_where):
     try:
@@ -307,19 +315,20 @@ def consultar_datos_mayores_seguro(corte, condicion_where):
         if not c_lmay: c_lmay = col_dinamica(tabla_edad, ["65", "LNE"], exclude=["PAD", "PE"])
 
         if not c_pmay or not c_lmay:
-            st.warning(f"⚠️ Columnas de mayores no encontradas en la tabla {tabla_edad}")
+            st.warning(f"⚠️ Columnas de mayores no encontradas en {tabla_edad}")
             return 0, 0
 
-        # Evitar error SQL si la tabla no tiene columnas geográficas
         cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad})", conn)["name"].tolist()
         cond_segura = condicion_where if "CLAVE_ENTIDAD" in cols_tabla or "CLAVE_ENTIDAD" not in condicion_where else ""
 
-        q = f"SELECT COALESCE(SUM(CAST({c_pmay} AS REAL)), 0) AS p, COALESCE(SUM(CAST({c_lmay} AS REAL)), 0) AS l FROM {tabla_edad} WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {cond_segura}"
+        corte_limpio = corte.replace("-", "").replace("_", "")
+        q = f"SELECT COALESCE(SUM(CAST({c_pmay} AS REAL)), 0) AS p, COALESCE(SUM(CAST({c_lmay} AS REAL)), 0) AS l FROM {tabla_edad} WHERE REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '') = '{corte_limpio}' {cond_segura}"
+        
         df_tmp = pd.read_sql_query(q, conn)
         return int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0), int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
     except Exception as e:
         st.error(f"🛑 Error SQL Mayores: {e}")
-        return 0, 0    
+        return 0, 0
    
 def renderizar_grafica_posicionamiento(
     corte, alcance_tipo, cve_ent, cve_dist, modo_comp=False, corte_base_comp=None
