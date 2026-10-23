@@ -2152,7 +2152,7 @@ if "Nacional" in alcance or cve_entidad_activa:
             corte_base_comp=corte_base,
         )
 
- st.markdown("---")
+st.markdown("---")
 st.markdown("### Perspectiva Territorial, Movilidad Nacional y Ciudadanía en el Extranjero")
 
 tab_jovenes, tab_mayores, tab_origen = st.tabs([
