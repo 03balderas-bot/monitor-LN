@@ -2155,6 +2155,8 @@ if "Nacional" in alcance or cve_entidad_activa:
 st.markdown("---")
 st.markdown("### Perspectiva Territorial, Movilidad Nacional y Ciudadanía en el Extranjero")
 
+tables_db_sidebar = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
+target_eo = "PE_EO" if "PE_EO" in tables_db_sidebar else "PE_SEX"
 tab_jovenes, tab_mayores, tab_origen = st.tabs([
     "🌱 Jóvenes de 18 y 19 Años",
     "👴 Población de 65 años y Más",
