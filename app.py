@@ -2152,10 +2152,19 @@ if "Nacional" in alcance or cve_entidad_activa:
             corte_base_comp=corte_base,
         )
 
-st.markdown("---")
+ st.markdown("---")
 st.markdown("### Perspectiva Territorial, Movilidad Nacional y Ciudadanía en el Extranjero")
 
-# Inicialización obligatoria de las pestañas para evitar el NameError
+# --- Detección segura de tablas en la base de datos ---
+try:
+    tables_db_sidebar = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
+except Exception:
+    tables_db_sidebar = []
+
+target_re = "PE_RE" if "PE_RE" in tables_db_sidebar else "PE_SEX"
+target_eo = "PE_EO" if "PE_EO" in tables_db_sidebar else "PE_SEX"
+
+# --- Inicialización de pestañas ---
 tab_jovenes, tab_mayores, tab_origen = st.tabs([
     "🌱 Jóvenes de 18 y 19 Años",
     "👴 Población de 65 años y Más",
@@ -2164,7 +2173,10 @@ tab_jovenes, tab_mayores, tab_origen = st.tabs([
 
 pjov_1, ljov_1, pjov_2, ljov_2 = 0, 0, 0, 0
 pmay_1, lmay_1, pmay_2, lmay_2 = 0, 0, 0, 0
+p_nat_1, l_nat_1, p_for_1, l_for_1, p_87_1, l_87_1, p_88_1, l_88_1 = 0, 0, 0, 0, 0, 0, 0, 0
+p_nat_2, l_nat_2, p_for_2, l_for_2, p_87_2, l_87_2, p_88_2, l_88_2 = 0, 0, 0, 0, 0, 0, 0, 0
 
+# --- Consultas seguras para jóvenes y adultos mayores ---
 pjov_1, ljov_1 = consultar_datos_jovenes_seguro(corte_reciente, sql_filtro_geo)
 if modo == "Comparar con Periodo Previo" and corte_base:
     pjov_2, ljov_2 = consultar_datos_jovenes_seguro(corte_base, sql_filtro_geo)
