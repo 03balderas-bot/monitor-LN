@@ -165,108 +165,110 @@ def calc_var_str(delta, base):
     return f"{delta:+,.0f} (0.00%)"
 
 def obtener_cortes_ordenados():
-  try:
-    tables_db = pd.read_sql_query(
-        "SELECT name FROM sqlite_master WHERE type='table'", conn
-    )["name"].tolist()
-    tabla_fechas = (
-        "PE_SEX"
-        if "PE_SEX" in tables_db
-        else ("PE_EO" if "PE_EO" in tables_db else None)
-    )
-    if not tabla_fechas:
-      return []
+    try:
+        tables_db = pd.read_sql_query(
+            "SELECT name FROM sqlite_master WHERE type='table'", conn
+        )["name"].tolist()
+        tabla_fechas = (
+            "PE_SEX"
+            if "PE_SEX" in tables_db
+            else ("PE_EO" if "PE_EO" in tables_db else None)
+        )
+        if not tabla_fechas:
+            return []
 
-    df = pd.read_sql_query(
-        f"SELECT DISTINCT FECHA_CORTE FROM {tabla_fechas}", conn
-    )
-    lista = [str(x) for x in df["FECHA_CORTE"].tolist()]
+        df = pd.read_sql_query(
+            f"SELECT DISTINCT FECHA_CORTE FROM {tabla_fechas}", conn
+        )
+        lista = [str(x) for x in df["FECHA_CORTE"].tolist()]
 
-    def key_orden(val):
-      if val.isdigit() and len(val) == 8:
-        return (0, int(val))
-      return (1, val)
+        def key_orden(val):
+            if val.isdigit() and len(val) == 8:
+                return (0, int(val))
+            return (1, val)
 
-    lista.sort(key=key_orden, reverse=True)
-    return lista
-  except Exception:
-    return []
+        lista.sort(key=key_orden, reverse=True)
+        return lista
+    except Exception:
+        return []
 
-    c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"], ["HOMBRE"], exclude=["LIS", "LNE"])
-    c_hl = col_dinamica("PE_SEX", ["HOMBRE", "LIS"], ["HOMBRE", "LNE"], ["HOMBRE"], exclude=["PAD", "PE"])
-    c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"], ["MUJER"], exclude=["LIS", "LNE"])
-    c_ml = col_dinamica("PE_SEX", ["MUJER", "LIS"], ["MUJER", "LNE"], ["MUJER"], exclude=["PAD", "PE"])
-    c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"], ["NB"], exclude=["LIS", "LNE", "MUJER"])
-    c_nbl = col_dinamica("PE_SEX", ["BINARIO", "LIS"], ["NB", "LIS"], ["NO_BINARIO", "LIS"], ["NB"], exclude=["PAD", "PE", "MUJER"])
- 
-    q_sex = f"""
-            SELECT 
-                COALESCE(SUM(CAST({c_hp} AS REAL)), 0) AS h_padron,
-                COALESCE(SUM(CAST({c_hl} AS REAL)), 0) AS h_lista,
-                COALESCE(SUM(CAST({c_mp} AS REAL)), 0) AS m_padron,
-                COALESCE(SUM(CAST({c_ml} AS REAL)), 0) AS m_lista,
-                COALESCE(SUM(CAST({c_nbp} AS REAL)), 0) AS nb_padron,
-                COALESCE(SUM(CAST({c_nbl} AS REAL)), 0) AS nb_lista
-            FROM PE_SEX
-            WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {condicion_where}
-        """
-    df_sex = pd.read_sql_query(q_sex, conn)
 
-    c_pnat = col_dinamica("PE_EO", ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"], ["NATIVO"], exclude=["LIS", "LNE"])
-    c_lnat = col_dinamica("PE_EO", ["NATIVO", "LIS"], ["NATIVO", "LNE"], ["NAT", "LIS"], ["NATIVO"], exclude=["PAD", "PE"])
-    c_pfor = col_dinamica("PE_EO", ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"], ["FORANEO"], exclude=["LIS", "LNE"])
-    c_lfor = col_dinamica("PE_EO", ["FORANEO", "LIS"], ["FORANEO", "LNE"], ["FOR", "LIS"], ["FORANEO"], exclude=["PAD", "PE"])
-    c_p87 = col_dinamica("PE_EO", ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"], ["HIJO"], ["MEXICANO"], ["87"], exclude=["LIS", "LNE", "88", "NATURALIZADO"])
-    c_l87 = col_dinamica("PE_EO", ["HIJO", "LIS"], ["HIJO", "LNE"], ["MEXICANO", "LIS"], ["HIJO"], ["MEXICANO"], ["87"], exclude=["PAD", "PE", "88", "NATURALIZADO"])
-    c_p88 = col_dinamica("PE_EO", ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"], ["NATURALIZADO"], ["88"], exclude=["LIS", "LNE", "87", "HIJO", "MEXICANO"])
-    c_l88 = col_dinamica("PE_EO", ["NATURALIZADO", "LIS"], ["NATURALIZADO", "LNE"], ["88", "LIS"], ["NATURALIZADO"], ["88"], exclude=["PAD", "PE", "87", "HIJO", "MEXICANO"])
+def consultar_datos_agregados_seguro(corte, condicion_where):
+    try:
+        c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"], ["HOMBRE"], exclude=["LIS", "LNE"])
+        c_hl = col_dinamica("PE_SEX", ["HOMBRE", "LIS"], ["HOMBRE", "LNE"], ["HOMBRE"], exclude=["PAD", "PE"])
+        c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"], ["MUJER"], exclude=["LIS", "LNE"])
+        c_ml = col_dinamica("PE_SEX", ["MUJER", "LIS"], ["MUJER", "LNE"], ["MUJER"], exclude=["PAD", "PE"])
+        c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"], ["NB"], exclude=["LIS", "LNE", "MUJER"])
+        c_nbl = col_dinamica("PE_SEX", ["BINARIO", "LIS"], ["NB", "LIS"], ["NO_BINARIO", "LIS"], ["NB"], exclude=["PAD", "PE", "MUJER"])
+     
+        q_sex = f"""
+                SELECT 
+                    COALESCE(SUM(CAST({c_hp} AS REAL)), 0) AS h_padron,
+                    COALESCE(SUM(CAST({c_hl} AS REAL)), 0) AS h_lista,
+                    COALESCE(SUM(CAST({c_mp} AS REAL)), 0) AS m_padron,
+                    COALESCE(SUM(CAST({c_ml} AS REAL)), 0) AS m_lista,
+                    COALESCE(SUM(CAST({c_nbp} AS REAL)), 0) AS nb_padron,
+                    COALESCE(SUM(CAST({c_nbl} AS REAL)), 0) AS nb_lista
+                FROM PE_SEX
+                WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {condicion_where}
+            """
+        df_sex = pd.read_sql_query(q_sex, conn)
 
-    q_eo = f"""
-            SELECT 
-                COALESCE(SUM(CAST({c_pnat} AS REAL)), 0) AS p_nat, COALESCE(SUM(CAST({c_lnat} AS REAL)), 0) AS l_nat,
-                COALESCE(SUM(CAST({c_pfor} AS REAL)), 0) AS p_for, COALESCE(SUM(CAST({c_lfor} AS REAL)), 0) AS l_for,
-                COALESCE(SUM(CAST({c_p87} AS REAL)), 0) AS p_87, COALESCE(SUM(CAST({c_l87} AS REAL)), 0) AS l_87,
-                COALESCE(SUM(CAST({c_p88} AS REAL)), 0) AS p_88, COALESCE(SUM(CAST({c_l88} AS REAL)), 0) AS l_88
-            FROM PE_EO
-            WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {condicion_where}
-        """
-    df_eo = pd.read_sql_query(q_eo, conn)
+        c_pnat = col_dinamica("PE_EO", ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"], ["NATIVO"], exclude=["LIS", "LNE"])
+        c_lnat = col_dinamica("PE_EO", ["NATIVO", "LIS"], ["NATIVO", "LNE"], ["NAT", "LIS"], ["NATIVO"], exclude=["PAD", "PE"])
+        c_pfor = col_dinamica("PE_EO", ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"], ["FORANEO"], exclude=["LIS", "LNE"])
+        c_lfor = col_dinamica("PE_EO", ["FORANEO", "LIS"], ["FORANEO", "LNE"], ["FOR", "LIS"], ["FORANEO"], exclude=["PAD", "PE"])
+        c_p87 = col_dinamica("PE_EO", ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"], ["HIJO"], ["MEXICANO"], ["87"], exclude=["LIS", "LNE", "88", "NATURALIZADO"])
+        c_l87 = col_dinamica("PE_EO", ["HIJO", "LIS"], ["HIJO", "LNE"], ["MEXICANO", "LIS"], ["HIJO"], ["MEXICANO"], ["87"], exclude=["PAD", "PE", "88", "NATURALIZADO"])
+        c_p88 = col_dinamica("PE_EO", ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"], ["NATURALIZADO"], ["88"], exclude=["LIS", "LNE", "87", "HIJO", "MEXICANO"])
+        c_l88 = col_dinamica("PE_EO", ["NATURALIZADO", "LIS"], ["NATURALIZADO", "LNE"], ["88", "LIS"], ["NATURALIZADO"], ["88"], exclude=["PAD", "PE", "87", "HIJO", "MEXICANO"])
 
-    h_p = int(df_sex["h_padron"].iloc[0]) if not df_sex.empty else 0
-    m_p = int(df_sex["m_padron"].iloc[0]) if not df_sex.empty else 0
-    nb_p = int(df_sex["nb_padron"].iloc[0]) if not df_sex.empty else 0
-    h_l = int(df_sex["h_lista"].iloc[0]) if not df_sex.empty else 0
-    m_l = int(df_sex["m_lista"].iloc[0]) if not df_sex.empty else 0
-    nb_l = int(df_sex["nb_lista"].iloc[0]) if not df_sex.empty else 0
+        q_eo = f"""
+                SELECT 
+                    COALESCE(SUM(CAST({c_pnat} AS REAL)), 0) AS p_nat, COALESCE(SUM(CAST({c_lnat} AS REAL)), 0) AS l_nat,
+                    COALESCE(SUM(CAST({c_pfor} AS REAL)), 0) AS p_for, COALESCE(SUM(CAST({c_lfor} AS REAL)), 0) AS l_for,
+                    COALESCE(SUM(CAST({c_p87} AS REAL)), 0) AS p_87, COALESCE(SUM(CAST({c_l87} AS REAL)), 0) AS l_87,
+                    COALESCE(SUM(CAST({c_p88} AS REAL)), 0) AS p_88, COALESCE(SUM(CAST({c_l88} AS REAL)), 0) AS l_88
+                FROM PE_EO
+                WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {condicion_where}
+            """
+        df_eo = pd.read_sql_query(q_eo, conn)
 
-    pad_sex_total = h_p + m_p + nb_p
-    p_n = int(df_eo["p_nat"].iloc[0]) if not df_eo.empty else 0
-    p_f = int(df_eo["p_for"].iloc[0]) if not df_eo.empty else 0
-    p_7 = int(df_eo["p_87"].iloc[0]) if not df_eo.empty else 0
-    p_8 = int(df_eo["p_88"].iloc[0]) if not df_eo.empty else 0
-    pad_eo_total = p_n + p_f + p_7 + p_8
+        h_p = int(df_sex["h_padron"].iloc[0]) if not df_sex.empty else 0
+        m_p = int(df_sex["m_padron"].iloc[0]) if not df_sex.empty else 0
+        nb_p = int(df_sex["nb_padron"].iloc[0]) if not df_sex.empty else 0
+        h_l = int(df_sex["h_lista"].iloc[0]) if not df_sex.empty else 0
+        m_l = int(df_sex["m_lista"].iloc[0]) if not df_sex.empty else 0
+        nb_l = int(df_sex["nb_lista"].iloc[0]) if not df_sex.empty else 0
 
-    lis_sex_total = h_l + m_l + nb_l
-    l_n = int(df_eo["l_nat"].iloc[0]) if not df_eo.empty else 0
-    l_f = int(df_eo["l_for"].iloc[0]) if not df_eo.empty else 0
-    l_7 = int(df_eo["l_87"].iloc[0]) if not df_eo.empty else 0
-    l_8 = int(df_eo["l_88"].iloc[0]) if not df_eo.empty else 0
-    lis_eo_total = l_n + l_f + l_7 + l_8
+        pad_sex_total = h_p + m_p + nb_p
+        p_n = int(df_eo["p_nat"].iloc[0]) if not df_eo.empty else 0
+        p_f = int(df_eo["p_for"].iloc[0]) if not df_eo.empty else 0
+        p_7 = int(df_eo["p_87"].iloc[0]) if not df_eo.empty else 0
+        p_8 = int(df_eo["p_88"].iloc[0]) if not df_eo.empty else 0
+        pad_eo_total = p_n + p_f + p_7 + p_8
 
-    pad_final = max(pad_sex_total, pad_eo_total) if max(pad_sex_total, pad_eo_total) > 0 else pad_sex_total
-    lis_final = max(lis_sex_total, lis_eo_total) if max(lis_sex_total, lis_eo_total) > 0 else lis_sex_total
+        lis_sex_total = h_l + m_l + nb_l
+        l_n = int(df_eo["l_nat"].iloc[0]) if not df_eo.empty else 0
+        l_f = int(df_eo["l_for"].iloc[0]) if not df_eo.empty else 0
+        l_7 = int(df_eo["l_87"].iloc[0]) if not df_eo.empty else 0
+        l_8 = int(df_eo["l_88"].iloc[0]) if not df_eo.empty else 0
+        lis_eo_total = l_n + l_f + l_7 + l_8
 
-    return pd.DataFrame([{
-        "padron": pad_final, "lista": lis_final,
-        "h_padron": h_p, "h_lista": h_l, "m_padron": m_p, "m_lista": m_l, "nb_padron": nb_p, "nb_lista": nb_l,
-        "p_nat": p_n, "l_nat": l_n, "p_for": p_f, "l_for": l_f, "p_87": p_7, "l_87": l_7, "p_88": p_8, "l_88": l_8,
-    }])
-  except Exception:
-    return []
+        pad_final = max(pad_sex_total, pad_eo_total) if max(pad_sex_total, pad_eo_total) > 0 else pad_sex_total
+        lis_final = max(lis_sex_total, lis_eo_total) if max(lis_sex_total, lis_eo_total) > 0 else lis_sex_total
 
-def obtener_cortes_ordenados():
-    # ... (todo el código de esta función existente)
-    return lista
+        return pd.DataFrame([{
+            "padron": pad_final, "lista": lis_final,
+            "h_padron": h_p, "h_lista": h_l, "m_padron": m_p, "m_lista": m_l, "nb_padron": nb_p, "nb_lista": nb_l,
+            "p_nat": p_n, "l_nat": l_n, "p_for": p_f, "l_for": l_f, "p_87": p_7, "l_87": l_7, "p_88": p_8, "l_88": l_8,
+        }])
+    except Exception:
+        return pd.DataFrame([{
+            "padron": 0, "lista": 0, "h_padron": 0, "h_lista": 0, "m_padron": 0, "m_lista": 0, "nb_padron": 0, "nb_lista": 0,
+            "p_nat": 0, "l_nat": 0, "p_for": 0, "l_for": 0, "p_87": 0, "l_87": 0, "p_88": 0, "l_88": 0,
+        }])
 
 # ==============================================================================
 # PEGA AQUÍ EL BLOQUE DE CONSULTAR DATOS AGREGADOS SEGURO
