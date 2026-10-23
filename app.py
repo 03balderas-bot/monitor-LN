@@ -270,6 +270,49 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
             "p_nat": 0, "l_nat": 0, "p_for": 0, "l_for": 0, "p_87": 0, "l_87": 0, "p_88": 0, "l_88": 0,
         }])
 
+def consultar_datos_jovenes_seguro(corte, condicion_where):
+    try:
+        c_pjov = col_dinamica("PE_SEX", ["18", "19", "PAD"], ["18_19", "PAD"], ["EDAD", "PAD"], exclude=["LIS", "LNE"])
+        c_ljov = col_dinamica("PE_SEX", ["18", "19", "LIS"], ["18_19", "LIS"], ["EDAD", "LIS"], exclude=["PAD", "PE"])
+        if not c_pjov:
+            c_pjov = col_dinamica("PE_SEX", ["18", "PAD"], exclude=["LIS", "LNE"])
+        if not c_ljov:
+            c_ljov = col_dinamica("PE_SEX", ["18", "LIS"], exclude=["PAD", "PE"])
+
+        q = f"""
+            SELECT 
+                COALESCE(SUM(CAST({c_pjov} AS REAL)), 0) AS p,
+                COALESCE(SUM(CAST({c_ljov} AS REAL)), 0) AS l
+            FROM PE_SEX 
+            WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {condicion_where}
+        """
+        df_tmp = pd.read_sql_query(q, conn)
+        return int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0), int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
+    except Exception:
+        return 0, 0
+
+
+def consultar_datos_mayores_seguro(corte, condicion_where):
+    try:
+        c_pmay = col_dinamica("PE_SEX", ["65", "PAD"], ["65_MAS", "PAD"], ["MAYOR", "PAD"], exclude=["LIS", "LNE"])
+        c_lmay = col_dinamica("PE_SEX", ["65", "LIS"], ["65_MAS", "LIS"], ["MAYOR", "LIS"], exclude=["PAD", "PE"])
+        if not c_pmay:
+            c_pmay = col_dinamica("PE_SEX", ["65", "PE"], exclude=["LIS", "LNE"])
+        if not c_lmay:
+            c_lmay = col_dinamica("PE_SEX", ["65", "LNE"], exclude=["PAD", "PE"])
+
+        q = f"""
+            SELECT 
+                COALESCE(SUM(CAST({c_pmay} AS REAL)), 0) AS p,
+                COALESCE(SUM(CAST({c_lmay} AS REAL)), 0) AS l
+            FROM PE_SEX 
+            WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {condicion_where}
+        """
+        df_tmp = pd.read_sql_query(q, conn)
+        return int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0), int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
+    except Exception:
+        return 0, 0
+    
 def renderizar_grafica_posicionamiento(
     corte, alcance_tipo, cve_ent, cve_dist, modo_comp=False, corte_base_comp=None
 ):
