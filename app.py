@@ -329,6 +329,7 @@ def consultar_datos_mayores_seguro(corte, condicion_where):
     except Exception:
         return 0, 0
     
+   
 def renderizar_grafica_posicionamiento(
     corte, alcance_tipo, cve_ent, cve_dist, modo_comp=False, corte_base_comp=None
 ):
@@ -340,7 +341,7 @@ def renderizar_grafica_posicionamiento(
   c_nbl = col_dinamica("PE_SEX", ["BINARIO", "LIS"], ["NB", "LIS"], ["NO_BINARIO", "LIS"])
 
   if cve_ent:
-    nom_entidad = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")
+    nom_entidad = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")x|
     c_cab = col_dinamica("PE_SEX", ["CABECERA"])
 
     q_rec = f"""
@@ -1890,28 +1891,28 @@ with st.sidebar:
   nivel_geografico = None
 
   tables_db_sidebar = pd.read_sql_query(
-      "SELECT name FROM sqlite_master WHERE type='table'", conn
-  )["name"].tolist()
-  tabla_ref = "PE_EO" if "PE_EO" in tables_db_sidebar else "PE_SEX"
+    "SELECT name FROM sqlite_master WHERE type='table'", conn
+)["name"].tolist()
+tabla_ref = "PE_EO" if "PE_EO" in tables_db_sidebar else "PE_SEX"
 
-  if alcance == "Total Nacional + Extranjero":
+if alcance == "Total Nacional + Extranjero":
     sql_filtro_geo = ""
     nombre_header = "Consolidado Nacional + Extranjero"
 
-  elif alcance == "Nacional (Sin Residentes en el Extranjero ID 0)":
+elif alcance == "Nacional (Sin Residentes en el Extranjero ID 0)":
     sql_filtro_geo = "AND CLAVE_MUNICIPIO != 0"
     nombre_header = "Territorio Nacional (Excluyendo Extranjero ID 0)"
 
-  elif alcance == "Solo Residentes en el Extranjero (ID 0)":
+elif alcance == "Solo Residentes en el Extranjero (ID 0)":
     sql_filtro_geo = "AND CLAVE_MUNICIPIO = 0"
     nombre_header = "Residentes en el Extranjero (Nacional ID 0)"
 
-  elif alcance == "Entidad Federativa Específica":
+elif alcance == "Entidad Federativa Específica":
     st.markdown("---")
     cve = st.selectbox(
         "Selecciona Entidad:",
         options=list(CATALOGO_ENTIDADES.keys()),
-        format_func=lambda x: f"{x:02d} - {CATALOGO_ENTIDADES[x]}",
+        format_func=lambda x: f"{x:02d} {CATALOGO_ENTIDADES[x]}",
         index=14,
         key="sel_entidad_id",
     )
@@ -1932,42 +1933,42 @@ with st.sidebar:
     )
 
     if nivel_geografico == "Total Entidad (Municipios + Extranjero)":
-      sql_filtro_geo = f"AND CLAVE_ENTIDAD = {cve}"
-      nombre_header = f"{nom_ent} [Total Estatal]"
+        sql_filtro_geo = f"AND CLAVE_ENTIDAD = {cve}"
+        nombre_header = f"{nom_ent} [Total Estatal]"
 
     elif nivel_geografico == "Por Distrito Específico":
-      try:
-        q_dists = f"SELECT DISTINCT CLAVE_DISTRITO FROM {tabla_ref} WHERE CLAVE_ENTIDAD = {cve} AND CLAVE_DISTRITO != 0 ORDER BY CLAVE_DISTRITO ASC"
-        df_dists = pd.read_sql_query(q_dists, conn)
-        opciones_dists = [int(x) for x in df_dists["CLAVE_DISTRITO"].tolist()]
-      except Exception:
-        opciones_dists = list(range(1, 41))
+        try:
+            q_dists = f"SELECT DISTINCT CLAVE_DISTRITO FROM {tabla_ref} WHERE CLAVE_ENTIDAD = {cve} AND CLAVE_DISTRITO != 0 ORDER BY CLAVE_DISTRITO ASC"
+            df_dists = pd.read_sql_query(q_dists, conn)
+            opciones_dists = [int(x) for x in df_dists["CLAVE_DISTRITO"].tolist()]
+        except Exception:
+            opciones_dists = list(range(1, 41))
 
-      idx_def_dist = opciones_dists.index(17) if 17 in opciones_dists else 0
-      cve_distrito_activo = st.selectbox(
-          "Selecciona Distrito:",
-          options=opciones_dists,
-          index=idx_def_dist,
-          format_func=lambda x: f"Distrito Federal {x:02d}",
-          key="sel_distrito",
-      )
-      sql_filtro_geo = (
-          f"AND CLAVE_ENTIDAD = {cve} AND CLAVE_DISTRITO ="
-          f" {cve_distrito_activo}"
-      )
-      nombre_header = f"{nom_ent} [Distrito Federal {cve_distrito_activo:02d}]"
+        idx_def_dist = opciones_dists.index(17) if 17 in opciones_dists else 0
+        cve_distrito_activo = st.selectbox(
+            "Selecciona Distrito:",
+            options=opciones_dists,
+            index=idx_def_dist,
+            format_func=lambda x: f"Distrito Federal {x:02d}",
+            key="sel_distrito",
+        )
+        sql_filtro_geo = (
+            f"AND CLAVE_ENTIDAD = {cve} AND CLAVE_DISTRITO ="
+            f" {cve_distrito_activo}"
+        )
+        nombre_header = f"{nom_ent} [Distrito Federal {cve_distrito_activo:02d}]"
 
     elif nivel_geografico == "Solo Municipios (Sin Extranjero ID 0)":
-      sql_filtro_geo = f"AND CLAVE_ENTIDAD = {cve} AND CLAVE_MUNICIPIO != 0"
-      nombre_header = f"{nom_ent} [Territorio Estatal sin Extranjero]"
+        sql_filtro_geo = f"AND CLAVE_ENTIDAD = {cve} AND CLAVE_MUNICIPIO != 0"
+        nombre_header = f"{nom_ent} [Territorio Estatal sin Extranjero]"
 
     elif nivel_geografico == "Solo Extranjero (ID 0)":
-      sql_filtro_geo = f"AND CLAVE_ENTIDAD = {cve} AND CLAVE_MUNICIPIO = 0"
-      nombre_header = f"{nom_ent} [Residentes en el Extranjero ID 0]"
+        sql_filtro_geo = f"AND CLAVE_ENTIDAD = {cve} AND CLAVE_MUNICIPIO = 0"
+        nombre_header = f"{nom_ent} [Residentes en el Extranjero ID 0]"
 
     elif nivel_geografico == "Municipio Específico":
-      try:
-        q_muns = f"""
+        try:
+            q_muns = f"""
                 SELECT CLAVE_MUNICIPIO, MAX(NOMBRE_DE_MUNICIPIO) AS NOMBRE_MUNICIPIO 
                 FROM PE_EO 
                 WHERE CLAVE_ENTIDAD = {cve} 
@@ -1980,13 +1981,13 @@ with st.sidebar:
                 GROUP BY CLAVE_MUNICIPIO 
                 ORDER BY CLAVE_MUNICIPIO ASC
             """
-        df_muns = pd.read_sql_query(q_muns, conn)
+            df_muns = pd.read_sql_query(q_muns, conn)
 
-        if (
-            df_muns.empty
-            or df_muns["NOMBRE_MUNICIPIO"].str.strip().eq("").all()
-        ):
-          q_muns_fallback = f"""
+            if (
+                df_muns.empty
+                or df_muns["NOMBRE_MUNICIPIO"].str.strip().eq("").all()
+            ):
+                q_muns_fallback = f"""
                     SELECT CLAVE_MUNICIPIO, MAX(NOMBRE_DE_MUNICIPIO) AS NOMBRE_MUNICIPIO 
                     FROM PE_EO 
                     WHERE CLAVE_ENTIDAD = {cve} 
@@ -1999,33 +2000,33 @@ with st.sidebar:
                     GROUP BY CLAVE_MUNICIPIO 
                     ORDER BY CLAVE_MUNICIPIO ASC
                 """
-          df_muns = pd.read_sql_query(q_muns_fallback, conn)
+                df_muns = pd.read_sql_query(q_muns_fallback, conn)
 
-        opciones_mun = [
-            (int(row["CLAVE_MUNICIPIO"]), str(row["NOMBRE_MUNICIPIO"]))
-            for _, row in df_muns.iterrows()
-            if pd.notnull(row["CLAVE_MUNICIPIO"])
-        ]
-      except Exception:
-        opciones_mun = []
+            opciones_mun = [
+                (int(row["CLAVE_MUNICIPIO"]), str(row["NOMBRE_MUNICIPIO"]))
+                for _, row in df_muns.iterrows()
+                if pd.notnull(row["CLAVE_MUNICIPIO"])
+            ]
+        except Exception:
+            opciones_mun = []
 
-      dict_nombres = dict(opciones_mun)
-      mun_elegido_val = st.selectbox(
-          "Selecciona Municipio:",
-          options=[item[0] for item in opciones_mun] or [0],
-          format_func=lambda x: (
-              "0 - Residentes en el Extranjero"
-              if int(x) == 0
-              else f"{int(x):03d} - {dict_nombres.get(int(x), 'Desconocido')}"
-          ),
-          key="sel_municipio",
-      )
-      sql_filtro_geo = (
-          f"AND CLAVE_ENTIDAD = {cve} AND CLAVE_MUNICIPIO = {mun_elegido_val}"
-      )
-      nombre_header = (
-          f"{nom_ent} [{dict_nombres.get(int(mun_elegido_val), f'Municipio ID {mun_elegido_val}')}]"
-      )
+        dict_nombres = dict(opciones_mun)
+        mun_elegido_val = st.selectbox(
+            "Selecciona Municipio:",
+            options=[item[0] for item in opciones_mun] or [0],
+            format_func=lambda x: (
+                "0 - Residentes en el Extranjero"
+                if int(x) == 0
+                else f"{int(x):03d} {dict_nombres.get(int(x), 'Desconocido')}"
+            ),
+            key="sel_municipio",
+        )
+        sql_filtro_geo = (
+            f"AND CLAVE_ENTIDAD = {cve} AND CLAVE_MUNICIPIO = {mun_elegido_val}"
+        )
+        nombre_header = (
+            f"{nom_ent} [{dict_nombres.get(int(mun_elegido_val), f'Municipio ID {mun_elegido_val}')}]"
+        )
 
 # ==============================================================================
 # RENDERIZADO DEL ENCABEZADO Y MÉTRICAS SUPERIORES
@@ -2036,18 +2037,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 if modo == "Comparar con Periodo Previo" and corte_base:
-  st.markdown(
-      "<div class='sub-title notranslate'>Evolución histórica: Corte Reciente"
-      f" (<b>{formatear_corte(corte_reciente)}</b>) frente a Corte Base"
-      f" (<b>{formatear_corte(corte_base)}</b>)</div>",
-      unsafe_allow_html=True,
-  )
+    st.markdown(
+        "<div class='sub-title notranslate'>Evolución histórica: Corte Reciente"
+        f" (<b>{formatear_corte(corte_reciente)}</b>) frente a Corte Base"
+        f" (<b>{formatear_corte(corte_base)}</b>)</div>",
+        unsafe_allow_html=True,
+    )
 else:
-  st.markdown(
-      "<div class='sub-title notranslate'>Corte de operación analizado:"
-      f" <b>{formatear_corte(corte_reciente)}</b></div>",
-      unsafe_allow_html=True,
-  )
+    st.markdown(
+        "<div class='sub-title notranslate'>Corte de operación analizado:"
+        f" <b>{formatear_corte(corte_reciente)}</b></div>",
+        unsafe_allow_html=True,
+    )
 
 df_m1 = consultar_datos_agregados_seguro(corte_reciente, sql_filtro_geo)
 p1 = int(df_m1["padron"].iloc[0] or 0)
@@ -2056,26 +2057,26 @@ cob1 = (l1 / p1 * 100) if p1 > 0 else 0
 
 p2, l2, cob2 = p1, l1, cob1
 if modo == "Comparar con Periodo Previo" and corte_base:
-  df_m2 = consultar_datos_agregados_seguro(corte_base, sql_filtro_geo)
-  p2 = int(df_m2["padron"].iloc[0] or 0)
-  l2 = int(df_m2["lista"].iloc[0] or 0)
-  cob2 = (l2 / p2 * 100) if p2 > 0 else 0
+    df_m2 = consultar_datos_agregados_seguro(corte_base, sql_filtro_geo)
+    p2 = int(df_m2["padron"].iloc[0] or 0)
+    l2 = int(df_m2["lista"].iloc[0] or 0)
+    cob2 = (l2 / p2 * 100) if p2 > 0 else 0
 
-  dif_p = p1 - p2
-  pct_p = (dif_p / p2 * 100) if p2 > 0 else 0
-  dif_l = l1 - l2
-  pct_l = (dif_l / l2 * 100) if l2 > 0 else 0
-  dif_cob = cob1 - cob2
+    dif_p = p1 - p2
+    pct_p = (dif_p / p2 * 100) if p2 > 0 else 0
+    dif_l = l1 - l2
+    pct_l = (dif_l / l2 * 100) if l2 > 0 else 0
+    dif_cob = cob1 - cob2
 
-  k1, k2, k3 = st.columns(3)
-  k1.metric("Padrón Electoral", f"{p1:,}", f"{dif_p:+,} ({pct_p:+.2f}%)")
-  k2.metric("Lista Nominal", f"{l1:,}", f"{dif_l:+,} ({pct_l:+.2f}%)")
-  k3.metric("Cobertura Registral", f"{cob1:.2f}%", f"{dif_cob:+.2f}%")
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Padrón Electoral", f"{p1:,}", f"{dif_p:+,} ({pct_p:+.2f}%)")
+    k2.metric("Lista Nominal", f"{l1:,}", f"{dif_l:+,} ({pct_l:+.2f}%)")
+    k3.metric("Cobertura Registral", f"{cob1:.2f}%", f"{dif_cob:+.2f}%")
 else:
-  k1, k2, k3 = st.columns(3)
-  k1.metric("Padrón Electoral", f"{p1:,}")
-  k2.metric("Lista Nominal", f"{l1:,}")
-  k3.metric("Cobertura Registral", f"{cob1:.2f}%")
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Padrón Electoral", f"{p1:,}")
+    k2.metric("Lista Nominal", f"{l1:,}")
+    k3.metric("Cobertura Registral", f"{cob1:.2f}%")
 
 st.markdown("---")
 st.markdown("#### Desglose por Género (Emparejado al 100% con el Padrón)")
@@ -2091,103 +2092,295 @@ mcob_1 = (m_lista_1 / m_padron_1 * 100) if m_padron_1 > 0 else 0
 nbcob_1 = (nb_lista_1 / nb_padron_1 * 100) if nb_padron_1 > 0 else 0
 
 if modo == "Comparar con Periodo Previo" and corte_base:
-  h_padron_2 = int(df_m2["h_padron"].iloc[0] or 0)
-  h_lista_2 = int(df_m2["h_lista"].iloc[0] or 0)
-  m_padron_2 = int(df_m2["m_padron"].iloc[0] or 0)
-  m_lista_2 = int(df_m2["m_lista"].iloc[0] or 0)
-  nb_padron_2 = int(df_m2["nb_padron"].iloc[0] or 0)
-  nb_lista_2 = int(df_m2["nb_lista"].iloc[0] or 0)
+    h_padron_2 = int(df_m2["h_padron"].iloc[0] or 0)
+    h_lista_2 = int(df_m2["h_lista"].iloc[0] or 0)
+    m_padron_2 = int(df_m2["m_padron"].iloc[0] or 0)
+    m_lista_2 = int(df_m2["m_lista"].iloc[0] or 0)
+    nb_padron_2 = int(df_m2["nb_padron"].iloc[0] or 0)
+    nb_lista_2 = int(df_m2["nb_lista"].iloc[0] or 0)
 
-  dh_p = h_padron_1 - h_padron_2
-  dh_l = h_lista_1 - h_lista_2
-  dm_p = m_padron_1 - m_padron_2
-  dm_l = m_lista_1 - m_lista_2
-  dnb_p = nb_padron_1 - nb_padron_2
-  dnb_l = nb_lista_1 - nb_lista_2
+    dh_p = h_padron_1 - h_padron_2
+    dh_l = h_lista_1 - h_lista_2
+    dm_p = m_padron_1 - m_padron_2
+    dm_l = m_lista_1 - m_lista_2
+    dnb_p = nb_padron_1 - nb_padron_2
+    dnb_l = nb_lista_1 - nb_lista_2
 
-  gh1, gh2, gh3 = st.columns(3)
-  with gh1:
-    st.markdown("**👨 Hombres**")
-    st.metric(
-        "Padrón",
-        f"{h_padron_1:,}",
-        calc_var_str(dh_p, h_padron_2),
-        delta_color="normal" if dh_p >= 0 else "inverse",
-    )
-    st.metric(
-        "Lista Nominal",
-        f"{h_lista_1:,}",
-        calc_var_str(dh_l, h_lista_2),
-        delta_color="normal" if dh_l >= 0 else "inverse",
-    )
-    st.text(f"Cobertura: {hcob_1:.2f}%")
-  with gh2:
-    st.markdown("**👩 Mujeres**")
-    st.metric(
-        "Padrón",
-        f"{m_padron_1:,}",
-        calc_var_str(dm_p, m_padron_2),
-        delta_color="normal" if dm_p >= 0 else "inverse",
-    )
-    st.metric(
-        "Lista Nominal",
-        f"{m_lista_1:,}",
-        calc_var_str(dm_l, m_lista_2),
-        delta_color="normal" if dm_l >= 0 else "inverse",
-    )
-    st.text(f"Cobertura: {mcob_1:.2f}%")
-  with gh3:
-    st.markdown("**⚧ No Binarios**")
-    st.metric(
-        "Padrón",
-        f"{nb_padron_1:,}",
-        calc_var_str(dnb_p, nb_padron_2),
-        delta_color="normal" if dnb_p >= 0 else "inverse",
-    )
-    st.metric(
-        "Lista Nominal",
-        f"{nb_lista_1:,}",
-        calc_var_str(dnb_l, nb_lista_2),
-        delta_color="normal" if dnb_l >= 0 else "inverse",
-    )
-    st.text(f"Cobertura: {nbcob_1:.2f}%")
+    gh1, gh2, gh3 = st.columns(3)
+    with gh1:
+        st.markdown("**👨 Hombres**")
+        st.metric("Padrón", f"{h_padron_1:,}", calc_var_str(dh_p, h_padron_2), delta_color="normal" if dh_p >= 0 else "inverse")
+        st.metric("Lista Nominal", f"{h_lista_1:,}", calc_var_str(dh_l, h_lista_2), delta_color="normal" if dh_l >= 0 else "inverse")
+        st.text(f"Cobertura: {hcob_1:.2f}%")
+    with gh2:
+        st.markdown("**👩 Mujeres**")
+        st.metric("Padrón", f"{m_padron_1:,}", calc_var_str(dm_p, m_padron_2), delta_color="normal" if dm_p >= 0 else "inverse")
+        st.metric("Lista Nominal", f"{m_lista_1:,}", calc_var_str(dm_l, m_lista_2), delta_color="normal" if dm_l >= 0 else "inverse")
+        st.text(f"Cobertura: {mcob_1:.2f}%")
+    with gh3:
+        st.markdown("**⚧ No Binarios**")
+        st.metric("Padrón", f"{nb_padron_1:,}", calc_var_str(dnb_p, nb_padron_2), delta_color="normal" if dnb_p >= 0 else "inverse")
+        st.metric("Lista Nominal", f"{nb_lista_1:,}", calc_var_str(dnb_l, nb_lista_2), delta_color="normal" if dnb_l >= 0 else "inverse")
+        st.text(f"Cobertura: {nbcob_1:.2f}%")
 else:
-  gh1, gh2, gh3 = st.columns(3)
-  with gh1:
-    st.markdown("**👨 Hombres**")
-    st.metric("Padrón Hombres", f"{h_padron_1:,}")
-    st.metric("Lista Nominal Hombres", f"{h_lista_1:,}")
-    st.text(f"Cobertura: {hcob_1:.2f}%")
-  with gh2:
-    st.markdown("**👩 Mujeres**")
-    st.metric("Padrón Mujeres", f"{m_padron_1:,}")
-    st.metric("Lista Nominal Mujeres", f"{m_lista_1:,}")
-    st.text(f"Cobertura: {mcob_1:.2f}%")
-  with gh3:
-    st.markdown("**⚧ No Binarios**")
-    st.metric("Padrón No Binarios", f"{nb_padron_1:,}")
-    st.metric("Lista Nominal No Binarios", f"{nb_lista_1:,}")
-    st.text(f"Cobertura: {nbcob_1:.2f}%")
+    gh1, gh2, gh3 = st.columns(3)
+    with gh1:
+        st.markdown("**👨 Hombres**")
+        st.metric("Padrón Hombres", f"{h_padron_1:,}")
+        st.metric("Lista Nominal Hombres", f"{h_lista_1:,}")
+        st.text(f"Cobertura: {hcob_1:.2f}%")
+    with gh2:
+        st.markdown("**👩 Mujeres**")
+        st.metric("Padrón Mujeres", f"{m_padron_1:,}")
+        st.metric("Lista Nominal Mujeres", f"{m_lista_1:,}")
+        st.text(f"Cobertura: {mcob_1:.2f}%")
+    with gh3:
+        st.markdown("**⚧ No Binarios**")
+        st.metric("Padrón No Binarios", f"{nb_padron_1:,}")
+        st.metric("Lista Nominal No Binarios", f"{nb_lista_1:,}")
+        st.text(f"Cobertura: {nbcob_1:.2f}%")
 
 if "Nacional" in alcance or cve_entidad_activa:
-  st.markdown("---")
-  with st.expander(
-      "📍 Posicionamiento y Contexto Geográfico Comparativo", expanded=True
-  ):
-    renderizar_grafica_posicionamiento(
-        corte=corte_reciente,
-        alcance_tipo=alcance,
-        cve_ent=cve_entidad_activa,
-        cve_dist=cve_distrito_activo,
-        modo_comp=(modo == "Comparar con Periodo Previo"),
-        corte_base_comp=corte_base,
-    )
+    st.markdown("---")
+    with st.expander("📍 Posicionamiento y Contexto Geográfico Comparativo", expanded=True):
+        renderizar_grafica_posicionamiento(
+            corte=corte_reciente,
+            alcance_tipo=alcance,
+            cve_ent=cve_entidad_activa,
+            cve_dist=cve_distrito_activo,
+            modo_comp=(modo == "Comparar con Periodo Previo"),
+            corte_base_comp=corte_base,
+        )
 
 st.markdown("---")
+st.markdown("### Perspectiva Territorial, Movilidad Nacional y Ciudadanía en el Extranjero")
+
+# Inicialización obligatoria de las pestañas para evitar el NameError
+tab_jovenes, tab_mayores, tab_origen = st.tabs([
+    "🌱 Jóvenes de 18 y 19 Años",
+    "👴 Población de 65 años y Más",
+    "📋 Comprobación de Origen y Movilidad (PE_EO)",
+])
+
+pjov_1, ljov_1, pjov_2, ljov_2 = 0, 0, 0, 0
+pmay_1, lmay_1, pmay_2, lmay_2 = 0, 0, 0, 0
+
+pjov_1, ljov_1 = consultar_datos_jovenes_seguro(corte_reciente, sql_filtro_geo)
+if modo == "Comparar con Periodo Previo" and corte_base:
+    pjov_2, ljov_2 = consultar_datos_jovenes_seguro(corte_base, sql_filtro_geo)
+
+pmay_1, lmay_1 = consultar_datos_mayores_seguro(corte_reciente, sql_filtro_geo)
+if modo == "Comparar con Periodo Previo" and corte_base:
+    pmay_2, lmay_2 = consultar_datos_mayores_seguro(corte_base, sql_filtro_geo)
+
+with tab_jovenes:
+    cobjov_1 = (ljov_1 / pjov_1 * 100) if pjov_1 > 0 else 0
+    if modo == "Comparar con Periodo Previo" and corte_base:
+        dp_jov = pjov_1 - pjov_2
+        dl_jov = ljov_1 - ljov_2
+        j1, j2, j3, j4 = st.columns(4)
+        j1.metric("Padrón (18-19 años)", f"{pjov_1:,}", calc_var_str(dp_jov, pjov_2), delta_color="normal" if dp_jov >= 0 else "inverse")
+        j2.metric("Lista Nominal (18-19 años)", f"{ljov_1:,}", calc_var_str(dl_jov, ljov_2), delta_color="normal" if dl_jov >= 0 else "inverse")
+        j3.metric("Cobertura Registral", f"{cobjov_1:.2f}%")
+        j4.metric("Peso en Padrón / Lista", f"{(pjov_1/p1*100) if p1>0 else 0:.2f}% / {(ljov_1/l1*100) if l1>0 else 0:.2f}%")
+    else:
+        j1, j2, j3, j4 = st.columns(4)
+        j1.metric("Padrón (18-19 años)", f"{pjov_1:,}")
+        j2.metric("Lista Nominal (18-19 años)", f"{ljov_1:,}")
+        j3.metric("Cobertura Registral", f"{cobjov_1:.2f}%")
+        j4.metric("Peso en Padrón / Lista", f"{(pjov_1/p1*100) if p1>0 else 0:.2f}% / {(ljov_1/l1*100) if l1>0 else 0:.2f}%")
+
+with tab_mayores:
+    cobmay_1 = (lmay_1 / pmay_1 * 100) if pmay_1 > 0 else 0
+    if modo == "Comparar con Periodo Previo" and corte_base:
+        dp_may = pmay_1 - pmay_2
+        dl_may = lmay_1 - lmay_2
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Padrón (65 años y más)", f"{pmay_1:,}", calc_var_str(dp_may, pmay_2), delta_color="normal" if dp_may >= 0 else "inverse")
+        m2.metric("Lista Nominal (65 años y más)", f"{lmay_1:,}", calc_var_str(dl_may, lmay_2), delta_color="normal" if dl_may >= 0 else "inverse")
+        m3.metric("Cobertura Registral", f"{cobmay_1:.2f}%")
+        m4.metric("Peso en Padrón / Lista", f"{(pmay_1/p1*100) if p1>0 else 0:.2f}% / {(lmay_1/l1*100) if l1>0 else 0:.2f}%")
+    else:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Padrón (65 años y más)", f"{pmay_1:,}")
+        m2.metric("Lista Nominal (65 años y más)", f"{lmay_1:,}")
+        m3.metric("Cobertura Registral", f"{cobmay_1:.2f}%")
+        m4.metric("Peso en Padrón / Lista", f"{(pmay_1/p1*100) if p1>0 else 0:.2f}% / {(lmay_1/l1*100) if l1>0 else 0:.2f}%")
+
+with tab_origen:
+    st.markdown("#### Comprobación de Origen y Movilidad (Suma emparejada al 100% con el Padrón)")
+    if target_eo:
+        try:
+            c_pnat = col_dinamica(target_eo, ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"], ["NATIVO"], exclude=["LIS", "LNE"])
+            c_lnat = col_dinamica(target_eo, ["NATIVO", "LIS"], ["NATIVO", "LNE"], ["NAT", "LIS"], ["NATIVO"], exclude=["PAD", "PE"])
+            c_pfor = col_dinamica(target_eo, ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"], ["FORANEO"], exclude=["LIS", "LNE"])
+            c_lfor = col_dinamica(target_eo, ["FORANEO", "LIS"], ["FORANEO", "LNE"], ["FOR", "LIS"], ["FORANEO"], exclude=["PAD", "PE"])
+            c_p87 = col_dinamica(target_eo, ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"], ["HIJO"], ["87"], exclude=["LIS", "LNE", "88", "NATURALIZADO"])
+            c_l87 = col_dinamica(target_eo, ["HIJO", "LIS"], ["HIJO", "LNE"], ["MEXICANO", "LIS"], ["HIJO"], ["87"], exclude=["PAD", "PE", "88", "NATURALIZADO"])
+            c_p88 = col_dinamica(target_eo, ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"], ["NATURALIZADO"], ["88"], exclude=["LIS", "LNE", "87", "HIJO"])
+            c_l88 = col_dinamica(target_eo, ["NATURALIZADO", "LIS"], ["NATURALIZADO", "LNE"], ["88", "LIS"], ["NATURALIZADO"], ["88"], exclude=["PAD", "PE", "87", "HIJO"])
+
+            q_eo1 = f"""
+                SELECT 
+                    COALESCE(SUM(CAST({c_pnat} AS REAL)), 0) AS p_nat, COALESCE(SUM(CAST({c_lnat} AS REAL)), 0) AS l_nat,
+                    COALESCE(SUM(CAST({c_pfor} AS REAL)), 0) AS p_for, COALESCE(SUM(CAST({c_lfor} AS REAL)), 0) AS l_for,
+                    COALESCE(SUM(CAST({c_p87} AS REAL)), 0) AS p_87, COALESCE(SUM(CAST({c_l87} AS REAL)), 0) AS l_87,
+                    COALESCE(SUM(CAST({c_p88} AS REAL)), 0) AS p_88, COALESCE(SUM(CAST({c_l88} AS REAL)), 0) AS l_88
+                FROM {target_eo}
+                WHERE TRIM(FECHA_CORTE) = TRIM('{corte_reciente}') {sql_filtro_geo}
+            """
+            df_eo = pd.read_sql_query(q_eo1, conn)
+            p_nat_1 = int(df_eo["p_nat"].iloc[0] if not df_eo.empty else 0)
+            l_nat_1 = int(df_eo["l_nat"].iloc[0] if not df_eo.empty else 0)
+            p_for_1 = int(df_eo["p_for"].iloc[0] if not df_eo.empty else 0)
+            l_for_1 = int(df_eo["l_for"].iloc[0] if not df_eo.empty else 0)
+            p_87_1 = int(df_eo["p_87"].iloc[0] if not df_eo.empty else 0)
+            l_87_1 = int(df_eo["l_87"].iloc[0] if not df_eo.empty else 0)
+            p_88_1 = int(df_eo["p_88"].iloc[0] if not df_eo.empty else 0)
+            l_88_1 = int(df_eo["l_88"].iloc[0] if not df_eo.empty else 0)
+
+            if modo == "Comparar con Periodo Previo" and corte_base:
+                q_eo2 = f"""
+                    SELECT 
+                        COALESCE(SUM(CAST({c_pnat} AS REAL)), 0) AS p_nat, COALESCE(SUM(CAST({c_lnat} AS REAL)), 0) AS l_nat,
+                        COALESCE(SUM(CAST({c_pfor} AS REAL)), 0) AS p_for, COALESCE(SUM(CAST({c_lfor} AS REAL)), 0) AS l_for,
+                        COALESCE(SUM(CAST({c_p87} AS REAL)), 0) AS p_87, COALESCE(SUM(CAST({c_l87} AS REAL)), 0) AS l_87,
+                        COALESCE(SUM(CAST({c_p88} AS REAL)), 0) AS p_88, COALESCE(SUM(CAST({c_l88} AS REAL)), 0) AS l_88
+                    FROM {target_eo}
+                    WHERE TRIM(FECHA_CORTE) = TRIM('{corte_base}') {sql_filtro_geo}
+                """
+                df_eo2 = pd.read_sql_query(q_eo2, conn)
+                p_nat_2 = int(df_eo2["p_nat"].iloc[0] if not df_eo2.empty else 0)
+                l_nat_2 = int(df_eo2["l_nat"].iloc[0] if not df_eo2.empty else 0)
+                p_for_2 = int(df_eo2["p_for"].iloc[0] if not df_eo2.empty else 0)
+                l_for_2 = int(df_eo2["l_for"].iloc[0] if not df_eo2.empty else 0)
+                p_87_2 = int(df_eo2["p_87"].iloc[0] if not df_eo2.empty else 0)
+                l_87_2 = int(df_eo2["l_87"].iloc[0] if not df_eo2.empty else 0)
+                p_88_2 = int(df_eo2["p_88"].iloc[0] if not df_eo2.empty else 0)
+                l_88_2 = int(df_eo2["l_88"].iloc[0] if not df_eo2.empty else 0)
+
+            tot_origen_p = (
+                p_nat_1 + p_for_1 + p_88_1 + p_87_1
+                if (p_nat_1 + p_for_1 + p_88_1 + p_87_1) > 0
+                else (p1 if p1 > 0 else 1)
+            )
+            tot_origen_l = (
+                l_nat_1 + l_for_1 + l_88_1 + l_87_1
+                if (l_nat_1 + l_for_1 + l_88_1 + l_87_1) > 0
+                else (l1 if l1 > 0 else 1)
+            )
+
+            p_nat_pct = (p_nat_1 / tot_origen_p) * 100
+            p_for_pct = (p_for_1 / tot_origen_p) * 100
+            p_88_pct = (p_88_1 / tot_origen_p) * 100
+            p_87_pct = (p_87_1 / tot_origen_p) * 100
+
+            l_nat_pct = (l_nat_1 / tot_origen_l) * 100
+            l_for_pct = (l_for_1 / tot_origen_l) * 100
+            l_88_pct = (l_88_1 / tot_origen_l) * 100
+            l_87_pct = (l_87_1 / tot_origen_l) * 100
+
+            col_o1, col_o2 = st.columns(2)
+            with col_o1:
+                st.markdown("##### 📌 Padrón Electoral por Origen")
+                if modo == "Comparar con Periodo Previo" and corte_base:
+                    dp_nat = p_nat_1 - p_nat_2
+                    dp_for = p_for_1 - p_for_2
+                    dp_88 = p_88_1 - p_88_2
+                    dp_87 = p_87_1 - p_87_2
+
+                    st.metric("Padrón Nativo", f"{p_nat_1:,}", f"{calc_var_str(dp_nat, p_nat_2)} | Estructura: {p_nat_pct:.2f}%", delta_color="normal" if dp_nat >= 0 else "inverse")
+                    st.metric("Padrón Foráneo", f"{p_for_1:,}", f"{calc_var_str(dp_for, p_for_2)} | Estructura: {p_for_pct:.2f}%", delta_color="normal" if dp_for >= 0 else "inverse")
+                    st.metric("Padrón Naturalizado (88)", f"{p_88_1:,}", f"{calc_var_str(dp_88, p_88_2)} | Estructura: {p_88_pct:.2f}%", delta_color="normal" if dp_88 >= 0 else "inverse")
+                    st.metric("Padrón Hijos de Mex (87)", f"{p_87_1:,}", f"{calc_var_str(dp_87, p_87_2)} | Estructura: {p_87_pct:.2f}%", delta_color="normal" if dp_87 >= 0 else "inverse")
+                else:
+                    st.metric("Padrón Nativo", f"{p_nat_1:,}", f"{p_nat_pct:.2f}% del Padrón")
+                    st.metric("Padrón Foráneo", f"{p_for_1:,}", f"{p_for_pct:.2f}% del Padrón")
+                    st.metric("Padrón Naturalizado (88)", f"{p_88_1:,}", f"{p_88_pct:.2f}% del Padrón")
+                    st.metric("Padrón Hijos de Mex (87)", f"{p_87_1:,}", f"{p_87_pct:.2f}% del Padrón")
+
+            with col_o2:
+                st.markdown("##### 📌 Lista Nominal por Origen")
+                if modo == "Comparar con Periodo Previo" and corte_base:
+                    dl_nat = l_nat_1 - l_nat_2
+                    dl_for = l_for_1 - l_for_2
+                    dl_88 = l_88_1 - l_88_2
+                    dl_87 = l_87_1 - l_87_2
+
+                    st.metric("Lista Nativa", f"{l_nat_1:,}", f"{calc_var_str(dl_nat, l_nat_2)} | Estructura: {l_nat_pct:.2f}%", delta_color="normal" if dl_nat >= 0 else "inverse")
+                    st.metric("Lista Foránea", f"{l_for_1:,}", f"{calc_var_str(dl_for, l_for_2)} | Estructura: {l_for_pct:.2f}%", delta_color="normal" if dl_for >= 0 else "inverse")
+                    st.metric("Lista Naturalizada (88)", f"{l_88_1:,}", f"{calc_var_str(dl_88, l_88_2)} | Estructura: {l_88_pct:.2f}%", delta_color="normal" if dl_88 >= 0 else "inverse")
+                    st.metric("Lista Hijos de Mex (87)", f"{l_87_1:,}", f"{calc_var_str(dl_87, l_87_2)} | Estructura: {l_87_pct:.2f}%", delta_color="normal" if dl_87 >= 0 else "inverse")
+                else:
+                    st.metric("Lista Nativa", f"{l_nat_1:,}", f"{l_nat_pct:.2f}% de Lista")
+                    st.metric("Lista Foránea", f"{l_for_1:,}", f"{l_for_pct:.2f}% de Lista")
+                    st.metric("Lista Naturalizada (88)", f"{l_88_1:,}", f"{l_88_pct:.2f}% de Lista")
+                    st.metric("Lista Hijos de Mex (87)", f"{l_87_1:,}", f"{l_87_pct:.2f}% de Lista")
+        except Exception:
+            pass
+
 st.markdown(
-    "### Perspectiva Territorial, Movilidad Nacional y Ciudadanía en el"
-    " Extranjero"
+    "<div class='footer-fuente notranslate'>📊 Datos oficiales extraídos de la"
+    " plataforma de Datos Abiertos del INE: <a"
+    " href='https://ine.mx/transparencia/datos-abiertos/#/tematica/padron-electoral'"
+    " target='_blank'>https://ine.mx/transparencia/datos-abiertos/#/tematica/padron-electoral</a></div>",
+    unsafe_allow_html=True,
 )
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📄 Exportar Informe")
+
+g_dict = {
+    "h_p": h_padron_1,
+    "h_l": h_lista_1,
+    "m_p": m_padron_1,
+    "m_l": m_lista_1,
+    "nb_p": nb_padron_1,
+    "nb_l": nb_lista_1,
+}
+dem_dict = {
+    "jov_p": pjov_1,
+    "jov_l": ljov_1,
+    "may_p": pmay_1,
+    "may_l": lmay_1,
+    "nat_p": p_nat_1,
+    "for_p": p_for_1,
+    "n88_p": p_88_1,
+    "n87_p": p_87_1,
+}
+desc_texto = f"Corte Reciente: {formatear_corte(corte_reciente)}"
+if modo == "Comparar con Periodo Previo" and corte_base:
+    desc_texto += f" frente a Base: {formatear_corte(corte_base)}"
+
+if st.sidebar.button("📥 Generar Reporte PDF"):
+  try:
+    with st.spinner("Compilando reporte gráfico ejecutivo..."):
+      pdf_file = generar_pdf_reporte(
+          titulo_alcance=nombre_header,
+          desc_cortes=desc_texto,
+          p1=p1,
+          p2=p2,
+          l1=l1,
+          l2=l2,
+          cob1=cob1,
+          cob2=cob2,
+          g_data=g_dict,
+          dem_data=dem_dict,
+          corte_rec=corte_reciente,
+          corte_bas=corte_base if modo == "Comparar con Periodo Previo" else None,
+          cve_ent=cve_entidad_activa,
+          cve_dist=cve_distrito_activo,
+          alcance_tipo=alcance,
+      )
+    st.sidebar.download_button(
+        label="⬇️ Descargar PDF Oficial",
+        data=pdf_file,
+        file_name=f"Reporte_Analitico_DERFE_{corte_reciente}.pdf",
+        mime="application/pdf",
+    )
+    st.sidebar.success("✅ Reporte generado correctamente.")
+  except Exception as err:
+    st.sidebar.error(f"Error al generar el PDF: {err}")
 
 with tab_origen:
     st.markdown(
