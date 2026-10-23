@@ -2149,6 +2149,8 @@ st.markdown("### Perspectiva Territorial, Movilidad Nacional y Ciudadanía en el
 tables_db_sidebar = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
 target_eo = "PE_EO" if "PE_EO" in tables_db_sidebar else "PE_SEX"
 
+st.error(f"🔍 DIAGNÓSTICO EN NUBE: Tablas detectadas: {tables_db_sidebar} | Corte activo: '{corte_reciente}'")
+
 tab_jovenes, tab_mayores, tab_origen = st.tabs([
     "🌱 Jóvenes de 18 y 19 Años",
     "👴 Población de 65 años y Más",
