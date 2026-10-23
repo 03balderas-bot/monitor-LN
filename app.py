@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import plotly.graph_objects as go
 import py7zr
+import re
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -133,7 +134,7 @@ def normalizar_txt(s):
   return norm.replace(" ", "_").replace(".", "").replace("\n", "_")
 
 # NUEVO MOTOR ULTRA-FLEXIBLE ANTI-CEROS
-def col_dinamica(tabla, *kws_lists, exclude=None):
+def col_dinamica(tabla, *kws_lists, exclude=None, default='"0"'):
     if exclude is None: exclude = []
     try:
         cols_db = pd.read_sql_query(f"PRAGMA table_info({tabla});", conn)["name"].tolist()
@@ -143,7 +144,7 @@ def col_dinamica(tabla, *kws_lists, exclude=None):
                 if any(ex in c_norm for ex in exclude): continue
                 if all(k in c_norm for k in kws): return f'"{c}"'
     except Exception: pass
-    return '"0"'
+    return default
 
 def formatear_corte(corte_val) -> str:
   c = str(corte_val).strip()
@@ -180,12 +181,16 @@ def obtener_cortes_ordenados():
         df = pd.read_sql_query(
             f"SELECT DISTINCT FECHA_CORTE FROM {tabla_fechas}", conn
         )
-        lista = [str(x) for x in df["FECHA_CORTE"].tolist()]
+        lista = sorted(
+            {str(x).strip() for x in df["FECHA_CORTE"].tolist() if str(x).strip()}
+        )
 
         def key_orden(val):
-            if val.isdigit() and len(val) == 8:
-                return (0, int(val))
-            return (1, val)
+            v = val.strip().upper()
+            if v.isdigit() and len(v) == 8:
+                return (int(v[:4]), int(v[4:6]), int(v[6:8]), v)
+            anio = re.search(r"(\d{4})", v)
+            return (int(anio.group(1)) if anio else 0, 0, 0, v)
 
         lista.sort(key=key_orden, reverse=True)
         return lista
@@ -270,35 +275,98 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
             "p_nat": 0, "l_nat": 0, "p_for": 0, "l_for": 0, "p_87": 0, "l_87": 0, "p_88": 0, "l_88": 0,
         }])
 
+def obtener_tabla_edad(tables_db):
+    if "PE_RE" in tables_db:
+        return "PE_RE"
+    return next(
+        (t for t in tables_db if "EDAD" in t.upper() or "RANGO" in t.upper()),
+        "PE_SEX" if "PE_SEX" in tables_db else "",
+    )
+
+def filtro_para_tabla(condicion_where, cols_tabla):
+    if not condicion_where:
+        return ""
+    cols = {str(c).upper() for c in cols_tabla}
+    validas = []
+    for frag in condicion_where.split("AND"):
+        frag = frag.strip()
+        if not frag:
+            continue
+        m = re.match(r"(CLAVE_[A-Z_]+)\s*(!=|=)\s*(-?\d+)\s*$", frag.upper())
+        if m and m.group(1) in cols:
+            validas.append(frag)
+    return (" AND " + " AND ".join(validas)) if validas else ""
+
+def condicion_corte(corte, cols_tabla):
+    if "FECHA_CORTE" not in {str(c).upper() for c in cols_tabla}:
+        return "1=1", []
+    expr = (
+        "UPPER(REPLACE(REPLACE(REPLACE(TRIM(FECHA_CORTE), '-', ''), '_', ''), ' ', ''))"
+    )
+    corte_limpio = str(corte).replace("-", "").replace("_", "").strip().upper()
+    return f"{expr} = ?", [corte_limpio]
+
 def consultar_datos_jovenes_seguro(corte, condicion_where):
     try:
         tables_db = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
-        tabla_edad = next((t for t in tables_db if "EDAD" in t.upper() or "RANGO" in t.upper()), "PE_SEX")
-        
-        c_pjov = col_dinamica(tabla_edad, ["18", "19", "PAD"], ["18_19", "PAD"], ["EDAD", "PAD"], ["18"], exclude=["LIS", "LNE"])
-        c_ljov = col_dinamica(tabla_edad, ["18", "19", "LIS"], ["18_19", "LIS"], ["EDAD", "LIS"], ["18"], exclude=["PAD", "PE"])
-        if not c_pjov: c_pjov = col_dinamica(tabla_edad, ["18", "PAD"], exclude=["LIS", "LNE"])
-        if not c_ljov: c_ljov = col_dinamica(tabla_edad, ["18", "LIS"], exclude=["PAD", "PE"])
-
-        if not c_pjov or not c_ljov:
-            st.warning(f"⚠️ Columnas de jóvenes no encontradas en {tabla_edad}")
+        tabla_edad = obtener_tabla_edad(tables_db)
+        if not tabla_edad:
+            st.warning("⚠️ No hay tabla de rangos de edad (PE_RE) en la base.")
             return 0, 0
 
-        cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad})", conn)["name"].tolist()
-        cond_segura = condicion_where if "CLAVE_ENTIDAD" in cols_tabla or "CLAVE_ENTIDAD" not in condicion_where else ""
+        cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad});", conn)["name"].tolist()
 
-        # Estandarizar fechas quitando guiones para que '2026-10-08' coincida con '20261008'
-        corte_limpio = corte.replace("-", "").replace("_", "")
-        q = f"SELECT COALESCE(SUM(CAST({c_pjov} AS REAL)), 0) AS p, COALESCE(SUM(CAST({c_ljov} AS REAL)), 0) AS l FROM {tabla_edad} WHERE REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '') = '{corte_limpio}' {cond_segura}"
-        
-        df_tmp = pd.read_sql_query(q, conn)
+        c_pjov = col_dinamica(
+            tabla_edad,
+            ["18", "19", "PAD"],
+            ["18_19", "PAD"],
+            ["18", "19", "PE"],
+            exclude=["LIS", "LNE", "HOMBRE", "MUJER", "BINARIO", "NB"],
+            default=None,
+        )
+        c_ljov = col_dinamica(
+            tabla_edad,
+            ["18", "19", "LIS"],
+            ["18_19", "LIS"],
+            ["18", "19", "LNE"],
+            exclude=["PAD", "PE", "HOMBRE", "MUJER", "BINARIO", "NB"],
+            default=None,
+        )
+
+        if not c_pjov or not c_ljov:
+            st.warning(
+                f"⚠️ No encontré columnas de jóvenes (18-19) en {tabla_edad}. "
+                f"Columnas disponibles: {cols_tabla}"
+            )
+            return 0, 0
+
+        cond_segura = filtro_para_tabla(condicion_where, cols_tabla)
+        where_corte, params = condicion_corte(corte, cols_tabla)
+        q = f"""
+                SELECT COALESCE(SUM(CAST({c_pjov} AS REAL)), 0) AS p,
+                       COALESCE(SUM(CAST({c_ljov} AS REAL)), 0) AS l
+                FROM {tabla_edad}
+                WHERE {where_corte} {cond_segura}
+            """
+        df_tmp = pd.read_sql_query(q, conn, params=params)
         p_val = int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0)
         l_val = int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
-        
+
         if p_val == 0:
-            fechas = pd.read_sql_query(f"SELECT DISTINCT FECHA_CORTE FROM {tabla_edad} LIMIT 3", conn)
-            st.warning(f"⚠️ Jóvenes dio 0. Fechas disponibles en {tabla_edad}: {fechas['FECHA_CORTE'].tolist()}")
-            
+            fechas = []
+            if "FECHA_CORTE" in {str(c).upper() for c in cols_tabla}:
+                fechas = (
+                    pd.read_sql_query(
+                        f"SELECT DISTINCT FECHA_CORTE FROM {tabla_edad} ORDER BY FECHA_CORTE DESC",
+                        conn,
+                    )["FECHA_CORTE"].astype(str).tolist()
+                )
+            st.warning(
+                f"⚠️ Jóvenes dio 0 en {tabla_edad} para el corte '{corte}'. "
+                f"Columnas usadas: {c_pjov}, {c_ljov}. "
+                f"Cortes disponibles: {fechas if fechas else 'sin FECHA_CORTE'}"
+            )
+
         return p_val, l_val
     except Exception as e:
         st.error(f"🛑 Error SQL Jóvenes: {e}")
@@ -307,25 +375,73 @@ def consultar_datos_jovenes_seguro(corte, condicion_where):
 def consultar_datos_mayores_seguro(corte, condicion_where):
     try:
         tables_db = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
-        tabla_edad = next((t for t in tables_db if "EDAD" in t.upper() or "RANGO" in t.upper()), "PE_SEX")
-        
-        c_pmay = col_dinamica(tabla_edad, ["65", "PAD"], ["65_MAS", "PAD"], ["MAYOR", "PAD"], exclude=["LIS", "LNE"])
-        c_lmay = col_dinamica(tabla_edad, ["65", "LIS"], ["65_MAS", "LIS"], ["MAYOR", "LIS"], exclude=["PAD", "PE"])
-        if not c_pmay: c_pmay = col_dinamica(tabla_edad, ["65", "PE"], exclude=["LIS", "LNE"])
-        if not c_lmay: c_lmay = col_dinamica(tabla_edad, ["65", "LNE"], exclude=["PAD", "PE"])
-
-        if not c_pmay or not c_lmay:
-            st.warning(f"⚠️ Columnas de mayores no encontradas en {tabla_edad}")
+        tabla_edad = obtener_tabla_edad(tables_db)
+        if not tabla_edad:
+            st.warning("⚠️ No hay tabla de rangos de edad (PE_RE) en la base.")
             return 0, 0
 
-        cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad})", conn)["name"].tolist()
-        cond_segura = condicion_where if "CLAVE_ENTIDAD" in cols_tabla or "CLAVE_ENTIDAD" not in condicion_where else ""
+        cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad});", conn)["name"].tolist()
 
-        corte_limpio = corte.replace("-", "").replace("_", "")
-        q = f"SELECT COALESCE(SUM(CAST({c_pmay} AS REAL)), 0) AS p, COALESCE(SUM(CAST({c_lmay} AS REAL)), 0) AS l FROM {tabla_edad} WHERE REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '') = '{corte_limpio}' {cond_segura}"
-        
-        df_tmp = pd.read_sql_query(q, conn)
-        return int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0), int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
+        c_pmay = col_dinamica(
+            tabla_edad,
+            ["65", "MAS", "PAD"],
+            ["65_MAS", "PAD"],
+            ["MAYOR", "PAD"],
+            ["ADULTO", "PAD"],
+            ["65", "PAD"],
+            exclude=["LIS", "LNE", "HOMBRE", "MUJER", "BINARIO", "NB"],
+            default=None,
+        )
+        c_lmay = col_dinamica(
+            tabla_edad,
+            ["65", "MAS", "LIS"],
+            ["65_MAS", "LIS"],
+            ["MAYOR", "LIS"],
+            ["ADULTO", "LIS"],
+            ["65", "MAS", "LNE"],
+            ["65_MAS", "LNE"],
+            ["MAYOR", "LNE"],
+            ["65", "LIS"],
+            ["65", "LNE"],
+            exclude=["PAD", "PE", "HOMBRE", "MUJER", "BINARIO", "NB"],
+            default=None,
+        )
+
+        if not c_pmay or not c_lmay:
+            st.warning(
+                f"⚠️ No encontré columnas de 65+ en {tabla_edad}. "
+                f"Columnas disponibles: {cols_tabla}"
+            )
+            return 0, 0
+
+        cond_segura = filtro_para_tabla(condicion_where, cols_tabla)
+        where_corte, params = condicion_corte(corte, cols_tabla)
+        q = f"""
+                SELECT COALESCE(SUM(CAST({c_pmay} AS REAL)), 0) AS p,
+                       COALESCE(SUM(CAST({c_lmay} AS REAL)), 0) AS l
+                FROM {tabla_edad}
+                WHERE {where_corte} {cond_segura}
+            """
+        df_tmp = pd.read_sql_query(q, conn, params=params)
+        p_val = int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0)
+        l_val = int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
+
+        if p_val == 0:
+            fechas = []
+            if "FECHA_CORTE" in {str(c).upper() for c in cols_tabla}:
+                fechas = (
+                    pd.read_sql_query(
+                        f"SELECT DISTINCT FECHA_CORTE FROM {tabla_edad} ORDER BY FECHA_CORTE DESC",
+                        conn,
+                    )["FECHA_CORTE"].astype(str).tolist()
+                )
+            st.warning(
+                f"⚠️ Mayores dio 0 en {tabla_edad} para el corte '{corte}'. "
+                f"Columnas usadas: {c_pmay}, {c_lmay}. "
+                f"Cortes disponibles: {fechas if fechas else 'sin FECHA_CORTE'}"
+            )
+
+        return p_val, l_val
     except Exception as e:
         st.error(f"🛑 Error SQL Mayores: {e}")
         return 0, 0
@@ -1108,7 +1224,15 @@ def generar_grafico_top_jovenes(corte):
         "SELECT name FROM sqlite_master WHERE type='table'", conn
     )["name"].tolist()
     if "PE_RE" in tables:
-      c_pj = col_dinamica("PE_RE", ["18", "19", "PAD"], ["18", "19", "PE"], exclude=["HOMBRE", "MUJER", "BINARIO"])
+      c_pj = col_dinamica(
+          "PE_RE",
+          ["18", "19", "PAD"],
+          ["18", "19", "PE"],
+          exclude=["LIS", "LNE", "HOMBRE", "MUJER", "BINARIO", "NB"],
+          default=None,
+      )
+      if not c_pj:
+        return None
       c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
       c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
       c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
@@ -1152,7 +1276,18 @@ def generar_grafico_top_mayores(corte):
         "SELECT name FROM sqlite_master WHERE type='table'", conn
     )["name"].tolist()
     if "PE_RE" in tables:
-      c_pm = col_dinamica("PE_RE", ["65", "PAD"], ["65", "PE"], exclude=["HOMBRE", "MUJER", "BINARIO"])
+      c_pm = col_dinamica(
+          "PE_RE",
+          ["65", "MAS", "PAD"],
+          ["65_MAS", "PAD"],
+          ["MAYOR", "PAD"],
+          ["ADULTO", "PAD"],
+          ["65", "PAD"],
+          exclude=["LIS", "LNE", "HOMBRE", "MUJER", "BINARIO", "NB"],
+          default=None,
+      )
+      if not c_pm:
+        return None
       c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
       c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
       c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
@@ -2168,6 +2303,8 @@ tab_jovenes, tab_mayores, tab_origen = st.tabs([
 
 pjov_1, ljov_1, pjov_2, ljov_2 = 0, 0, 0, 0
 pmay_1, lmay_1, pmay_2, lmay_2 = 0, 0, 0, 0
+p_nat_1 = l_nat_1 = p_for_1 = l_for_1 = 0
+p_87_1 = l_87_1 = p_88_1 = l_88_1 = 0
 
 pjov_1, ljov_1 = consultar_datos_jovenes_seguro(corte_reciente, sql_filtro_geo)
 if modo == "Comparar con Periodo Previo" and corte_base:
@@ -2320,8 +2457,8 @@ with tab_origen:
                     st.metric("Lista Foránea", f"{l_for_1:,}", f"{l_for_pct:.2f}% de Lista")
                     st.metric("Lista Naturalizada (88)", f"{l_88_1:,}", f"{l_88_pct:.2f}% de Lista")
                     st.metric("Lista Hijos de Mex (87)", f"{l_87_1:,}", f"{l_87_pct:.2f}% de Lista")
-        except Exception:
-            pass
+        except Exception as e:
+            st.error(f"🛑 Error en pestaña Origen: {e}")
 
 st.markdown(
     "<div class='footer-fuente notranslate'>📊 Datos oficiales extraídos de la"
