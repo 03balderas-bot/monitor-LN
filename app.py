@@ -341,7 +341,7 @@ def renderizar_grafica_posicionamiento(
   c_nbl = col_dinamica("PE_SEX", ["BINARIO", "LIS"], ["NB", "LIS"], ["NO_BINARIO", "LIS"])
 
   if cve_ent:
-    nom_entidad = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")x|
+    nom_entidad = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")
     c_cab = col_dinamica("PE_SEX", ["CABECERA"])
 
     q_rec = f"""
