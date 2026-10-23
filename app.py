@@ -308,142 +308,38 @@ def condicion_corte(corte, cols_tabla):
 
 def consultar_datos_jovenes_seguro(corte, condicion_where):
     try:
-        tables_db = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
-        tabla_edad = obtener_tabla_edad(tables_db)
-        if not tabla_edad:
-            st.warning("⚠️ No hay tabla de rangos de edad (PE_RE) en la base.")
-            return 0, 0
+        tabla_edad = "PE_RE"
+        cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad})", conn)["name"].tolist()
+        
+        c_pjov = "PE_JOVENES_18_19" if "PE_JOVENES_18_19" in cols_tabla else col_dinamica(tabla_edad, ["18", "19", "PAD"], ["18_19", "PAD"], exclude=["LIS", "LNE"])
+        c_ljov = "LNE_JOVENES_18_19" if "LNE_JOVENES_18_19" in cols_tabla else col_dinamica(tabla_edad, ["18", "19", "LIS"], ["18_19", "LIS"], exclude=["PAD", "PE"])
 
-        cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad});", conn)["name"].tolist()
-
-        c_pjov = col_dinamica(
-            tabla_edad,
-            ["18", "19", "PAD"],
-            ["18_19", "PAD"],
-            ["18", "19", "PE"],
-            exclude=["LIS", "LNE", "HOMBRE", "MUJER", "BINARIO", "NB"],
-            default=None,
-        )
-        c_ljov = col_dinamica(
-            tabla_edad,
-            ["18", "19", "LIS"],
-            ["18_19", "LIS"],
-            ["18", "19", "LNE"],
-            exclude=["PAD", "PE", "HOMBRE", "MUJER", "BINARIO", "NB"],
-            default=None,
-        )
-
-        if not c_pjov or not c_ljov:
-            st.warning(
-                f"⚠️ No encontré columnas de jóvenes (18-19) en {tabla_edad}. "
-                f"Columnas disponibles: {cols_tabla}"
-            )
-            return 0, 0
-
-        cond_segura = filtro_para_tabla(condicion_where, cols_tabla)
-        where_corte, params = condicion_corte(corte, cols_tabla)
-        q = f"""
-                SELECT COALESCE(SUM(CAST({c_pjov} AS REAL)), 0) AS p,
-                       COALESCE(SUM(CAST({c_ljov} AS REAL)), 0) AS l
-                FROM {tabla_edad}
-                WHERE {where_corte} {cond_segura}
-            """
-        df_tmp = pd.read_sql_query(q, conn, params=params)
-        p_val = int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0)
-        l_val = int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
-
-        if p_val == 0:
-            fechas = []
-            if "FECHA_CORTE" in {str(c).upper() for c in cols_tabla}:
-                fechas = (
-                    pd.read_sql_query(
-                        f"SELECT DISTINCT FECHA_CORTE FROM {tabla_edad} ORDER BY FECHA_CORTE DESC",
-                        conn,
-                    )["FECHA_CORTE"].astype(str).tolist()
-                )
-            st.warning(
-                f"⚠️ Jóvenes dio 0 en {tabla_edad} para el corte '{corte}'. "
-                f"Columnas usadas: {c_pjov}, {c_ljov}. "
-                f"Cortes disponibles: {fechas if fechas else 'sin FECHA_CORTE'}"
-            )
-
-        return p_val, l_val
-    except Exception as e:
-        st.error(f"🛑 Error SQL Jóvenes: {e}")
+        cond_segura = condicion_where if "CLAVE_ENTIDAD" in cols_tabla or "CLAVE_ENTIDAD" not in condicion_where else ""
+        corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
+        
+        q = f"SELECT COALESCE(SUM(CAST({c_pjov} AS REAL)), 0) AS p, COALESCE(SUM(CAST({c_ljov} AS REAL)), 0) AS l FROM {tabla_edad} WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = '{corte_limpio}' {cond_segura}"
+        
+        df_tmp = pd.read_sql_query(q, conn)
+        return int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0), int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
+    except Exception:
         return 0, 0
 
 def consultar_datos_mayores_seguro(corte, condicion_where):
     try:
-        tables_db = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
-        tabla_edad = obtener_tabla_edad(tables_db)
-        if not tabla_edad:
-            st.warning("⚠️ No hay tabla de rangos de edad (PE_RE) en la base.")
-            return 0, 0
+        tabla_edad = "PE_RE"
+        cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad})", conn)["name"].tolist()
+        
+        c_pmay = "PE_MAS_DE_65" if "PE_MAS_DE_65" in cols_tabla else col_dinamica(tabla_edad, ["65", "PAD"], ["65_MAS", "PAD"], exclude=["LIS", "LNE"])
+        c_lmay = "LNE_MAS_DE_65" if "LNE_MAS_DE_65" in cols_tabla else col_dinamica(tabla_edad, ["65", "LIS"], ["65_MAS", "LIS"], exclude=["PAD", "PE"])
 
-        cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad});", conn)["name"].tolist()
-
-        c_pmay = col_dinamica(
-            tabla_edad,
-            ["65", "MAS", "PAD"],
-            ["65_MAS", "PAD"],
-            ["MAYOR", "PAD"],
-            ["ADULTO", "PAD"],
-            ["65", "PAD"],
-            exclude=["LIS", "LNE", "HOMBRE", "MUJER", "BINARIO", "NB"],
-            default=None,
-        )
-        c_lmay = col_dinamica(
-            tabla_edad,
-            ["65", "MAS", "LIS"],
-            ["65_MAS", "LIS"],
-            ["MAYOR", "LIS"],
-            ["ADULTO", "LIS"],
-            ["65", "MAS", "LNE"],
-            ["65_MAS", "LNE"],
-            ["MAYOR", "LNE"],
-            ["65", "LIS"],
-            ["65", "LNE"],
-            exclude=["PAD", "PE", "HOMBRE", "MUJER", "BINARIO", "NB"],
-            default=None,
-        )
-
-        if not c_pmay or not c_lmay:
-            st.warning(
-                f"⚠️ No encontré columnas de 65+ en {tabla_edad}. "
-                f"Columnas disponibles: {cols_tabla}"
-            )
-            return 0, 0
-
-        cond_segura = filtro_para_tabla(condicion_where, cols_tabla)
-        where_corte, params = condicion_corte(corte, cols_tabla)
-        q = f"""
-                SELECT COALESCE(SUM(CAST({c_pmay} AS REAL)), 0) AS p,
-                       COALESCE(SUM(CAST({c_lmay} AS REAL)), 0) AS l
-                FROM {tabla_edad}
-                WHERE {where_corte} {cond_segura}
-            """
-        df_tmp = pd.read_sql_query(q, conn, params=params)
-        p_val = int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0)
-        l_val = int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
-
-        if p_val == 0:
-            fechas = []
-            if "FECHA_CORTE" in {str(c).upper() for c in cols_tabla}:
-                fechas = (
-                    pd.read_sql_query(
-                        f"SELECT DISTINCT FECHA_CORTE FROM {tabla_edad} ORDER BY FECHA_CORTE DESC",
-                        conn,
-                    )["FECHA_CORTE"].astype(str).tolist()
-                )
-            st.warning(
-                f"⚠️ Mayores dio 0 en {tabla_edad} para el corte '{corte}'. "
-                f"Columnas usadas: {c_pmay}, {c_lmay}. "
-                f"Cortes disponibles: {fechas if fechas else 'sin FECHA_CORTE'}"
-            )
-
-        return p_val, l_val
-    except Exception as e:
-        st.error(f"🛑 Error SQL Mayores: {e}")
+        cond_segura = condicion_where if "CLAVE_ENTIDAD" in cols_tabla or "CLAVE_ENTIDAD" not in condicion_where else ""
+        corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
+        
+        q = f"SELECT COALESCE(SUM(CAST({c_pmay} AS REAL)), 0) AS p, COALESCE(SUM(CAST({c_lmay} AS REAL)), 0) AS l FROM {tabla_edad} WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = '{corte_limpio}' {cond_segura}"
+        
+        df_tmp = pd.read_sql_query(q, conn)
+        return int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0), int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
+    except Exception:
         return 0, 0
    
 def renderizar_grafica_posicionamiento(
