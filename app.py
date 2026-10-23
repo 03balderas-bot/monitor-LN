@@ -274,29 +274,25 @@ def consultar_datos_jovenes_seguro(corte, condicion_where):
     try:
         tables_db = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
         tabla_edad = next((t for t in tables_db if "EDAD" in t.upper() or "RANGO" in t.upper()), "PE_SEX")
-        if tabla_edad not in tables_db:
-            tabla_edad = "PE_SEX"
-
+        
         c_pjov = col_dinamica(tabla_edad, ["18", "19", "PAD"], ["18_19", "PAD"], ["EDAD", "PAD"], ["18"], exclude=["LIS", "LNE"])
         c_ljov = col_dinamica(tabla_edad, ["18", "19", "LIS"], ["18_19", "LIS"], ["EDAD", "LIS"], ["18"], exclude=["PAD", "PE"])
-        if not c_pjov:
-            c_pjov = col_dinamica(tabla_edad, ["18", "PAD"], exclude=["LIS", "LNE"])
-        if not c_ljov:
-            c_ljov = col_dinamica(tabla_edad, ["18", "LIS"], exclude=["PAD", "PE"])
+        if not c_pjov: c_pjov = col_dinamica(tabla_edad, ["18", "PAD"], exclude=["LIS", "LNE"])
+        if not c_ljov: c_ljov = col_dinamica(tabla_edad, ["18", "LIS"], exclude=["PAD", "PE"])
 
         if not c_pjov or not c_ljov:
+            st.warning(f"⚠️ Columnas de jóvenes no encontradas en la tabla {tabla_edad}")
             return 0, 0
 
-        q = f"""
-            SELECT 
-                COALESCE(SUM(CAST({c_pjov} AS REAL)), 0) AS p,
-                COALESCE(SUM(CAST({c_ljov} AS REAL)), 0) AS l
-            FROM {tabla_edad} 
-            WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {condicion_where}
-        """
+        # Evitar error SQL si la tabla no tiene columnas geográficas (ej. CLAVE_ENTIDAD)
+        cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad})", conn)["name"].tolist()
+        cond_segura = condicion_where if "CLAVE_ENTIDAD" in cols_tabla or "CLAVE_ENTIDAD" not in condicion_where else ""
+
+        q = f"SELECT COALESCE(SUM(CAST({c_pjov} AS REAL)), 0) AS p, COALESCE(SUM(CAST({c_ljov} AS REAL)), 0) AS l FROM {tabla_edad} WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {cond_segura}"
         df_tmp = pd.read_sql_query(q, conn)
         return int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0), int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
-    except Exception:
+    except Exception as e:
+        st.error(f"🛑 Error SQL Jóvenes: {e}")
         return 0, 0
 
 
@@ -304,31 +300,26 @@ def consultar_datos_mayores_seguro(corte, condicion_where):
     try:
         tables_db = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
         tabla_edad = next((t for t in tables_db if "EDAD" in t.upper() or "RANGO" in t.upper()), "PE_SEX")
-        if tabla_edad not in tables_db:
-            tabla_edad = "PE_SEX"
-
+        
         c_pmay = col_dinamica(tabla_edad, ["65", "PAD"], ["65_MAS", "PAD"], ["MAYOR", "PAD"], exclude=["LIS", "LNE"])
         c_lmay = col_dinamica(tabla_edad, ["65", "LIS"], ["65_MAS", "LIS"], ["MAYOR", "LIS"], exclude=["PAD", "PE"])
-        if not c_pmay:
-            c_pmay = col_dinamica(tabla_edad, ["65", "PE"], exclude=["LIS", "LNE"])
-        if not c_lmay:
-            c_lmay = col_dinamica(tabla_edad, ["65", "LNE"], exclude=["PAD", "PE"])
+        if not c_pmay: c_pmay = col_dinamica(tabla_edad, ["65", "PE"], exclude=["LIS", "LNE"])
+        if not c_lmay: c_lmay = col_dinamica(tabla_edad, ["65", "LNE"], exclude=["PAD", "PE"])
 
         if not c_pmay or not c_lmay:
+            st.warning(f"⚠️ Columnas de mayores no encontradas en la tabla {tabla_edad}")
             return 0, 0
 
-        q = f"""
-            SELECT 
-                COALESCE(SUM(CAST({c_pmay} AS REAL)), 0) AS p,
-                COALESCE(SUM(CAST({c_lmay} AS REAL)), 0) AS l
-            FROM {tabla_edad} 
-            WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {condicion_where}
-        """
+        # Evitar error SQL si la tabla no tiene columnas geográficas
+        cols_tabla = pd.read_sql_query(f"PRAGMA table_info({tabla_edad})", conn)["name"].tolist()
+        cond_segura = condicion_where if "CLAVE_ENTIDAD" in cols_tabla or "CLAVE_ENTIDAD" not in condicion_where else ""
+
+        q = f"SELECT COALESCE(SUM(CAST({c_pmay} AS REAL)), 0) AS p, COALESCE(SUM(CAST({c_lmay} AS REAL)), 0) AS l FROM {tabla_edad} WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {cond_segura}"
         df_tmp = pd.read_sql_query(q, conn)
         return int(df_tmp["p"].iloc[0] if not df_tmp.empty else 0), int(df_tmp["l"].iloc[0] if not df_tmp.empty else 0)
-    except Exception:
-        return 0, 0
-    
+    except Exception as e:
+        st.error(f"🛑 Error SQL Mayores: {e}")
+        return 0, 0    
    
 def renderizar_grafica_posicionamiento(
     corte, alcance_tipo, cve_ent, cve_dist, modo_comp=False, corte_base_comp=None
@@ -2157,6 +2148,7 @@ st.markdown("### Perspectiva Territorial, Movilidad Nacional y Ciudadanía en el
 
 tables_db_sidebar = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
 target_eo = "PE_EO" if "PE_EO" in tables_db_sidebar else "PE_SEX"
+
 tab_jovenes, tab_mayores, tab_origen = st.tabs([
     "🌱 Jóvenes de 18 y 19 Años",
     "👴 Población de 65 años y Más",
