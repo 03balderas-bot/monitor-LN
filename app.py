@@ -2189,155 +2189,22 @@ st.markdown(
     " Extranjero"
 )
 
-tab_jovenes, tab_mayores, tab_origen = st.tabs([
-    "🌱 Jóvenes de 18 y 19 Años",
-    "👴 Población de 65 Años y Más",
-    "📋 Comprobación de Origen y Movilidad (PE_EO)",
-])
-
-target_re = "PE_RE" if "PE_RE" in tables_db_sidebar else None
-target_eo = "PE_EO" if "PE_EO" in tables_db_sidebar else None
-
-pjov_1, ljov_1, pjov_2, ljov_2 = 0, 0, 0, 0
-pmay_1, lmay_1, pmay_2, lmay_2 = 0, 0, 0, 0
-p_nat_1, l_nat_1, p_for_1, l_for_1, p_87_1, l_87_1, p_88_1, l_88_1 = (
-    0, 0, 0, 0, 0, 0, 0, 0
-)
-p_nat_2, l_nat_2, p_for_2, l_for_2, p_87_2, l_87_2, p_88_2, l_88_2 = (
-    0, 0, 0, 0, 0, 0, 0, 0
-)
-
-with tab_jovenes:
-  if target_re:
-      c_pj = col_dinamica(target_re, ["18", "19", "PAD"], ["18", "19", "PE"], ["18", "19"], exclude=["LIS", "LNE", "HOMBRE", "MUJER", "BINARIO", "NB"])
-      c_lj = col_dinamica(target_re, ["18", "19", "LIS"], ["18", "19", "LNE"], ["18", "19"], exclude=["PAD", "PE", "HOMBRE", "MUJER", "BINARIO", "NB"])
-
-      q1 = f'SELECT SUM(CAST({c_pj} AS REAL)) AS p, SUM(CAST({c_lj} AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_reciente}") {sql_filtro_geo}'
-      try:
-          df_tmp = pd.read_sql_query(q1, conn)
-          pjov_1 = int(df_tmp["p"].iloc[0] or 0)
-          ljov_1 = int(df_tmp["l"].iloc[0] or 0)
-      except Exception:
-          pass
-
-  if modo == "Comparar con Periodo Previo" and corte_base:
-      q2 = f'SELECT SUM(CAST({c_pj} AS REAL)) AS p, SUM(CAST({c_lj} AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_base}") {sql_filtro_geo}'
-      try:
-        df_tmp2 = pd.read_sql_query(q2, conn)
-        pjov_2 = int(df_tmp2["p"].iloc[0] or 0)
-        ljov_2 = int(df_tmp2["l"].iloc[0] or 0)
-      except Exception:
-        pass
-
-  cobjov_1 = (ljov_1 / pjov_1 * 100) if pjov_1 > 0 else 0
-  if modo == "Comparar con Periodo Previo" and corte_base:
-    dp_jov = pjov_1 - pjov_2
-    dl_jov = ljov_1 - ljov_2
-
-    j1, j2, j3, j4 = st.columns(4)
-    j1.metric(
-        "Padrón (18-19 años)",
-        f"{pjov_1:,}",
-        calc_var_str(dp_jov, pjov_2),
-        delta_color="normal" if dp_jov >= 0 else "inverse",
-    )
-    j2.metric(
-        "Lista Nominal (18-19 años)",
-        f"{ljov_1:,}",
-        calc_var_str(dl_jov, ljov_2),
-        delta_color="normal" if dl_jov >= 0 else "inverse",
-    )
-    j3.metric("Cobertura Registral", f"{cobjov_1:.2f}%")
-    j4.metric(
-        "Peso en Padrón / Lista",
-        f"{(pjov_1/p1*100) if p1>0 else 0:.2f}% /"
-        f" {(ljov_1/l1*100) if l1>0 else 0:.2f}%",
-    )
-  else:
-    j1, j2, j3, j4 = st.columns(4)
-    j1.metric("Padrón (18-19 años)", f"{pjov_1:,}")
-    j2.metric("Lista Nominal (18-19 años)", f"{ljov_1:,}")
-    j3.metric("Cobertura Registral", f"{cobjov_1:.2f}%")
-    j4.metric(
-        "Peso en Padrón / Lista",
-        f"{(pjov_1/p1*100) if p1>0 else 0:.2f}% /"
-        f" {(ljov_1/l1*100) if l1>0 else 0:.2f}%",
-    )
-
-with tab_mayores:
-  if target_re:
-    c_pm = col_dinamica(target_re, ["65", "PAD"], ["65", "PE"], ["MAS_DE_65", "PAD"], exclude=["HOMBRE", "MUJER", "BINARIO"])
-    c_lm = col_dinamica(target_re, ["65", "LIS"], ["65", "LNE"], ["MAS_DE_65", "LIS"], exclude=["HOMBRE", "MUJER", "BINARIO"])
-
-    q1 = f'SELECT SUM(CAST({c_pm} AS REAL)) AS p, SUM(CAST({c_lm} AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_reciente}") {sql_filtro_geo}'
-    try:
-      df_tmp = pd.read_sql_query(q1, conn)
-      pmay_1 = int(df_tmp["p"].iloc[0] or 0)
-      lmay_1 = int(df_tmp["l"].iloc[0] or 0)
-    except Exception:
-      pass
-
-    if modo == "Comparar con Periodo Previo" and corte_base:
-      q2 = f'SELECT SUM(CAST({c_pm} AS REAL)) AS p, SUM(CAST({c_lm} AS REAL)) AS l FROM {target_re} WHERE TRIM(FECHA_CORTE) = TRIM("{corte_base}") {sql_filtro_geo}'
-      try:
-        df_tmp2 = pd.read_sql_query(q2, conn)
-        pmay_2 = int(df_tmp2["p"].iloc[0] or 0)
-        lmay_2 = int(df_tmp2["l"].iloc[0] or 0)
-      except Exception:
-        pass
-
-  cobmay_1 = (lmay_1 / pmay_1 * 100) if pmay_1 > 0 else 0
-  if modo == "Comparar con Periodo Previo" and corte_base:
-    dp_may = pmay_1 - pmay_2
-    dl_may = lmay_1 - lmay_2
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric(
-        "Padrón (65 años y más)",
-        f"{pmay_1:,}",
-        calc_var_str(dp_may, pmay_2),
-        delta_color="normal" if dp_may >= 0 else "inverse",
-    )
-    m2.metric(
-        "Lista Nominal (65 años y más)",
-        f"{lmay_1:,}",
-        calc_var_str(dl_may, lmay_2),
-        delta_color="normal" if dl_may >= 0 else "inverse",
-    )
-    m3.metric("Cobertura Registral", f"{cobmay_1:.2f}%")
-    m4.metric(
-        "Peso en Padrón / Lista",
-        f"{(pmay_1/p1*100) if p1>0 else 0:.2f}% /"
-        f" {(lmay_1/l1*100) if l1>0 else 0:.2f}%",
-    )
-  else:
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Padrón (65 años y más)", f"{pmay_1:,}")
-    m2.metric("Lista Nominal (65 años y más)", f"{lmay_1:,}")
-    m3.metric("Cobertura Registral", f"{cobmay_1:.2f}%")
-    m4.metric(
-        "Peso en Padrón / Lista",
-        f"{(pmay_1/p1*100) if p1>0 else 0:.2f}% /"
-        f" {(lmay_1/l1*100) if l1>0 else 0:.2f}%",
-    )
-
 with tab_origen:
-  st.markdown(
-      "#### Comprobación de Origen y Movilidad (Suma emparejada al 100% con el"
-      " Padrón)"
-  )
-  if target_eo:
-    try:
-      c_pnat = col_dinamica("PE_EO", ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"])
-      c_lnat = col_dinamica("PE_EO", ["NATIVO", "LIS"], ["NATIVO", "LNE"], ["NAT", "LIS"])
-      c_pfor = col_dinamica("PE_EO", ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"])
-      c_lfor = col_dinamica("PE_EO", ["FORANEO", "LIS"], ["FORANEO", "LNE"], ["FOR", "LIS"])
-      c_p87 = col_dinamica("PE_EO", ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"])
-      c_l87 = col_dinamica("PE_EO", ["HIJO", "LIS"], ["HIJO", "LNE"], ["MEXICANO", "LIS"])
-      c_p88 = col_dinamica("PE_EO", ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"])
-      c_l88 = col_dinamica("PE_EO", ["NATURALIZADO", "LIS"], ["NATURALIZADO", "LNE"], ["88", "LIS"])
+    st.markdown(
+        "#### Comprobación de Origen y Movilidad (Suma emparejada al 100% con el Padrón)"
+    )
+    if target_eo:
+        try:
+            c_pnat = col_dinamica(target_eo, ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"], ["NATIVO"], exclude=["LIS", "LNE"])
+            c_lnat = col_dinamica(target_eo, ["NATIVO", "LIS"], ["NATIVO", "LNE"], ["NAT", "LIS"], ["NATIVO"], exclude=["PAD", "PE"])
+            c_pfor = col_dinamica(target_eo, ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"], ["FORANEO"], exclude=["LIS", "LNE"])
+            c_lfor = col_dinamica(target_eo, ["FORANEO", "LIS"], ["FORANEO", "LNE"], ["FOR", "LIS"], ["FORANEO"], exclude=["PAD", "PE"])
+            c_p87 = col_dinamica(target_eo, ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"], ["HIJO"], ["87"], exclude=["LIS", "LNE", "88", "NATURALIZADO"])
+            c_l87 = col_dinamica(target_eo, ["HIJO", "LIS"], ["HIJO", "LNE"], ["MEXICANO", "LIS"], ["HIJO"], ["87"], exclude=["PAD", "PE", "88", "NATURALIZADO"])
+            c_p88 = col_dinamica(target_eo, ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"], ["NATURALIZADO"], ["88"], exclude=["LIS", "LNE", "87", "HIJO"])
+            c_l88 = col_dinamica(target_eo, ["NATURALIZADO", "LIS"], ["NATURALIZADO", "LNE"], ["88", "LIS"], ["NATURALIZADO"], ["88"], exclude=["PAD", "PE", "87", "HIJO"])
 
-      q_eo1 = f"""
+            q_eo1 = f"""
                 SELECT 
                     COALESCE(SUM(CAST({c_pnat} AS REAL)), 0) AS p_nat, COALESCE(SUM(CAST({c_lnat} AS REAL)), 0) AS l_nat,
                     COALESCE(SUM(CAST({c_pfor} AS REAL)), 0) AS p_for, COALESCE(SUM(CAST({c_lfor} AS REAL)), 0) AS l_for,
@@ -2346,18 +2213,18 @@ with tab_origen:
                 FROM {target_eo}
                 WHERE TRIM(FECHA_CORTE) = TRIM('{corte_reciente}') {sql_filtro_geo}
             """
-      df_eo = pd.read_sql_query(q_eo1, conn)
-      p_nat_1 = int(df_eo["p_nat"].iloc[0] or 0)
-      l_nat_1 = int(df_eo["l_nat"].iloc[0] or 0)
-      p_for_1 = int(df_eo["p_for"].iloc[0] or 0)
-      l_for_1 = int(df_eo["l_for"].iloc[0] or 0)
-      p_87_1 = int(df_eo["p_87"].iloc[0] or 0)
-      l_87_1 = int(df_eo["l_87"].iloc[0] or 0)
-      p_88_1 = int(df_eo["p_88"].iloc[0] or 0)
-      l_88_1 = int(df_eo["l_88"].iloc[0] or 0)
+            df_eo = pd.read_sql_query(q_eo1, conn)
+            p_nat_1 = int(df_eo["p_nat"].iloc[0] if not df_eo.empty else 0)
+            l_nat_1 = int(df_eo["l_nat"].iloc[0] if not df_eo.empty else 0)
+            p_for_1 = int(df_eo["p_for"].iloc[0] if not df_eo.empty else 0)
+            l_for_1 = int(df_eo["l_for"].iloc[0] if not df_eo.empty else 0)
+            p_87_1 = int(df_eo["p_87"].iloc[0] if not df_eo.empty else 0)
+            l_87_1 = int(df_eo["l_87"].iloc[0] if not df_eo.empty else 0)
+            p_88_1 = int(df_eo["p_88"].iloc[0] if not df_eo.empty else 0)
+            l_88_1 = int(df_eo["l_88"].iloc[0] if not df_eo.empty else 0)
 
-      if modo == "Comparar con Periodo Previo" and corte_base:
-        q_eo2 = f"""
+            if modo == "Comparar con Periodo Previo" and corte_base:
+                q_eo2 = f"""
                     SELECT 
                         COALESCE(SUM(CAST({c_pnat} AS REAL)), 0) AS p_nat, COALESCE(SUM(CAST({c_lnat} AS REAL)), 0) AS l_nat,
                         COALESCE(SUM(CAST({c_pfor} AS REAL)), 0) AS p_for, COALESCE(SUM(CAST({c_lfor} AS REAL)), 0) AS l_for,
@@ -2366,143 +2233,115 @@ with tab_origen:
                     FROM {target_eo}
                     WHERE TRIM(FECHA_CORTE) = TRIM('{corte_base}') {sql_filtro_geo}
                 """
-        df_eo2 = pd.read_sql_query(q_eo2, conn)
-        p_nat_2 = int(df_eo2["p_nat"].iloc[0] or 0)
-        l_nat_2 = int(df_eo2["l_nat"].iloc[0] or 0)
-        p_for_2 = int(df_eo2["p_for"].iloc[0] or 0)
-        l_for_2 = int(df_eo2["l_for"].iloc[0] or 0)
-        p_87_2 = int(df_eo2["p_87"].iloc[0] or 0)
-        l_87_2 = int(df_eo2["l_87"].iloc[0] or 0)
-        p_88_2 = int(df_eo2["p_88"].iloc[0] or 0)
-        l_88_2 = int(df_eo2["l_88"].iloc[0] or 0)
+                df_eo2 = pd.read_sql_query(q_eo2, conn)
+                p_nat_2 = int(df_eo2["p_nat"].iloc[0] if not df_eo2.empty else 0)
+                l_nat_2 = int(df_eo2["l_nat"].iloc[0] if not df_eo2.empty else 0)
+                p_for_2 = int(df_eo2["p_for"].iloc[0] if not df_eo2.empty else 0)
+                l_for_2 = int(df_eo2["l_for"].iloc[0] if not df_eo2.empty else 0)
+                p_87_2 = int(df_eo2["p_87"].iloc[0] if not df_eo2.empty else 0)
+                l_87_2 = int(df_eo2["l_87"].iloc[0] if not df_eo2.empty else 0)
+                p_88_2 = int(df_eo2["p_88"].iloc[0] if not df_eo2.empty else 0)
+                l_88_2 = int(df_eo2["l_88"].iloc[0] if not df_eo2.empty else 0)
 
-      tot_origen_p = (
-          p_nat_1 + p_for_1 + p_88_1 + p_87_1
-          if (p_nat_1 + p_for_1 + p_88_1 + p_87_1) > 0
-          else (p1 if p1 > 0 else 1)
-      )
-      tot_origen_l = (
-          l_nat_1 + l_for_1 + l_88_1 + l_87_1
-          if (l_nat_1 + l_for_1 + l_88_1 + l_87_1) > 0
-          else (l1 if l1 > 0 else 1)
-      )
+            tot_origen_p = (
+                p_nat_1 + p_for_1 + p_88_1 + p_87_1
+                if (p_nat_1 + p_for_1 + p_88_1 + p_87_1) > 0
+                else (p1 if p1 > 0 else 1)
+            )
+            tot_origen_l = (
+                l_nat_1 + l_for_1 + l_88_1 + l_87_1
+                if (l_nat_1 + l_for_1 + l_88_1 + l_87_1) > 0
+                else (l1 if l1 > 0 else 1)
+            )
 
-      p_nat_pct = (p_nat_1 / tot_origen_p) * 100
-      p_for_pct = (p_for_1 / tot_origen_p) * 100
-      p_88_pct = (p_88_1 / tot_origen_p) * 100
-      p_87_pct = (p_87_1 / tot_origen_p) * 100
+            p_nat_pct = (p_nat_1 / tot_origen_p) * 100
+            p_for_pct = (p_for_1 / tot_origen_p) * 100
+            p_88_pct = (p_88_1 / tot_origen_p) * 100
+            p_87_pct = (p_87_1 / tot_origen_p) * 100
 
-      l_nat_pct = (l_nat_1 / tot_origen_l) * 100
-      l_for_pct = (l_for_1 / tot_origen_l) * 100
-      l_88_pct = (l_88_1 / tot_origen_l) * 100
-      l_87_pct = (l_87_1 / tot_origen_l) * 100
+            l_nat_pct = (l_nat_1 / tot_origen_l) * 100
+            l_for_pct = (l_for_1 / tot_origen_l) * 100
+            l_88_pct = (l_88_1 / tot_origen_l) * 100
+            l_87_pct = (l_87_1 / tot_origen_l) * 100
 
-      col_o1, col_o2 = st.columns(2)
-      with col_o1:
-        st.markdown("##### 📌 Padrón Electoral por Origen")
-        if modo == "Comparar con Periodo Previo" and corte_base:
-          dp_nat = p_nat_1 - p_nat_2
-          dp_for = p_for_1 - p_for_2
-          dp_88 = p_88_1 - p_88_2
-          dp_87 = p_87_1 - p_87_2
+            col_o1, col_o2 = st.columns(2)
+            with col_o1:
+                st.markdown("##### 📌 Padrón Electoral por Origen")
+                if modo == "Comparar con Periodo Previo" and corte_base:
+                    dp_nat = p_nat_1 - p_nat_2
+                    dp_for = p_for_1 - p_for_2
+                    dp_88 = p_88_1 - p_88_2
+                    dp_87 = p_87_1 - p_87_2
 
-          st.metric(
-              "Padrón Nativo",
-              f"{p_nat_1:,}",
-              f"{calc_var_str(dp_nat, p_nat_2)} | Estructura:"
-              f" {p_nat_pct:.2f}%",
-              delta_color="normal" if dp_nat >= 0 else "inverse",
-          )
-          st.metric(
-              "Padrón Foráneo",
-              f"{p_for_1:,}",
-              f"{calc_var_str(dp_for, p_for_2)} | Estructura:"
-              f" {p_for_pct:.2f}%",
-              delta_color="normal" if dp_for >= 0 else "inverse",
-          )
-          st.metric(
-              "Padrón Naturalizado (88)",
-              f"{p_88_1:,}",
-              f"{calc_var_str(dp_88, p_88_2)} | Estructura: {p_88_pct:.2f}%",
-              delta_color="normal" if dp_88 >= 0 else "inverse",
-          )
-          st.metric(
-              "Padrón Hijos de Mex (87)",
-              f"{p_87_1:,}",
-              f"{calc_var_str(dp_87, p_87_2)} | Estructura: {p_87_pct:.2f}%",
-              delta_color="normal" if dp_87 >= 0 else "inverse",
-          )
-        else:
-          st.metric(
-              "Padrón Nativo", f"{p_nat_1:,}", f"{p_nat_pct:.2f}% del Padrón"
-          )
-          st.metric(
-              "Padrón Foráneo", f"{p_for_1:,}", f"{p_for_pct:.2f}% del Padrón"
-          )
-          st.metric(
-              "Padrón Naturalizado (88)",
-              f"{p_88_1:,}",
-              f"{p_88_pct:.2f}% del Padrón",
-          )
-          st.metric(
-              "Padrón Hijos de Mex (87)",
-              f"{p_87_1:,}",
-              f"{p_87_pct:.2f}% del Padrón",
-          )
+                    st.metric(
+                        "Padrón Nativo",
+                        f"{p_nat_1:,}",
+                        f"{calc_var_str(dp_nat, p_nat_2)} | Estructura: {p_nat_pct:.2f}%",
+                        delta_color="normal" if dp_nat >= 0 else "inverse",
+                    )
+                    st.metric(
+                        "Padrón Foráneo",
+                        f"{p_for_1:,}",
+                        f"{calc_var_str(dp_for, p_for_2)} | Estructura: {p_for_pct:.2f}%",
+                        delta_color="normal" if dp_for >= 0 else "inverse",
+                    )
+                    st.metric(
+                        "Padrón Naturalizado (88)",
+                        f"{p_88_1:,}",
+                        f"{calc_var_str(dp_88, p_88_2)} | Estructura: {p_88_pct:.2f}%",
+                        delta_color="normal" if dp_88 >= 0 else "inverse",
+                    )
+                    st.metric(
+                        "Padrón Hijos de Mex (87)",
+                        f"{p_87_1:,}",
+                        f"{calc_var_str(dp_87, p_87_2)} | Estructura: {p_87_pct:.2f}%",
+                        delta_color="normal" if dp_87 >= 0 else "inverse",
+                    )
+                else:
+                    st.metric("Padrón Nativo", f"{p_nat_1:,}", f"{p_nat_pct:.2f}% del Padrón")
+                    st.metric("Padrón Foráneo", f"{p_for_1:,}", f"{p_for_pct:.2f}% del Padrón")
+                    st.metric("Padrón Naturalizado (88)", f"{p_88_1:,}", f"{p_88_pct:.2f}% del Padrón")
+                    st.metric("Padrón Hijos de Mex (87)", f"{p_87_1:,}", f"{p_87_pct:.2f}% del Padrón")
 
-      with col_o2:
-        st.markdown("##### 📌 Lista Nominal por Origen")
-        if modo == "Comparar con Periodo Previo" and corte_base:
-          dl_nat = l_nat_1 - l_nat_2
-          dl_for = l_for_1 - l_for_2
-          dl_88 = l_88_1 - l_88_2
-          dl_87 = l_87_1 - l_87_2
+            with col_o2:
+                st.markdown("##### 📌 Lista Nominal por Origen")
+                if modo == "Comparar con Periodo Previo" and corte_base:
+                    dl_nat = l_nat_1 - l_nat_2
+                    dl_for = l_for_1 - l_for_2
+                    dl_88 = l_88_1 - l_88_2
+                    dl_87 = l_87_1 - l_87_2
 
-          st.metric(
-              "Lista Nativa",
-              f"{l_nat_1:,}",
-              f"{calc_var_str(dl_nat, l_nat_2)} | Estructura:"
-              f" {l_nat_pct:.2f}%",
-              delta_color="normal" if dl_nat >= 0 else "inverse",
-          )
-          st.metric(
-              "Lista Foránea",
-              f"{l_for_1:,}",
-              f"{calc_var_str(dl_for, l_for_2)} | Estructura:"
-              f" {l_for_pct:.2f}%",
-              delta_color="normal" if dl_for >= 0 else "inverse",
-          )
-          st.metric(
-              "Lista Naturalizada (88)",
-              f"{l_88_1:,}",
-              f"{calc_var_str(dl_88, l_88_2)} | Estructura: {l_88_pct:.2f}%",
-              delta_color="normal" if dl_88 >= 0 else "inverse",
-          )
-          st.metric(
-              "Lista Hijos de Mex (87)",
-              f"{l_87_1:,}",
-              f"{calc_var_str(dl_87, l_87_2)} | Estructura: {l_87_pct:.2f}%",
-              delta_color="normal" if dl_87 >= 0 else "inverse",
-          )
-        else:
-          st.metric(
-              "Lista Nativa", f"{l_nat_1:,}", f"{l_nat_pct:.2f}% de Lista"
-          )
-          st.metric(
-              "Lista Foránea", f"{l_for_1:,}", f"{l_for_pct:.2f}% de Lista"
-          )
-          st.metric(
-              "Lista Naturalizada (88)",
-              f"{l_88_1:,}",
-              f"{l_88_pct:.2f}% de Lista",
-          )
-          st.metric(
-              "Lista Hijos de Mex (87)",
-              f"{l_87_1:,}",
-              f"{l_87_pct:.2f}% de Lista",
-          )
-    except Exception:
-      pass
+                    st.metric(
+                        "Lista Nativa",
+                        f"{l_nat_1:,}",
+                        f"{calc_var_str(dl_nat, l_nat_2)} | Estructura: {l_nat_pct:.2f}%",
+                        delta_color="normal" if dl_nat >= 0 else "inverse",
+                    )
+                    st.metric(
+                        "Lista Foránea",
+                        f"{l_for_1:,}",
+                        f"{calc_var_str(dl_for, l_for_2)} | Estructura: {l_for_pct:.2f}%",
+                        delta_color="normal" if dl_for >= 0 else "inverse",
+                    )
+                    st.metric(
+                        "Lista Naturalizada (88)",
+                        f"{l_88_1:,}",
+                        f"{calc_var_str(dl_88, l_88_2)} | Estructura: {l_88_pct:.2f}%",
+                        delta_color="normal" if dl_88 >= 0 else "inverse",
+                    )
+                    st.metric(
+                        "Lista Hijos de Mex (87)",
+                        f"{l_87_1:,}",
+                        f"{calc_var_str(dl_87, l_87_2)} | Estructura: {l_87_pct:.2f}%",
+                        delta_color="normal" if dl_87 >= 0 else "inverse",
+                    )
+                else:
+                    st.metric("Lista Nativa", f"{l_nat_1:,}", f"{l_nat_pct:.2f}% de Lista")
+                    st.metric("Lista Foránea", f"{l_for_1:,}", f"{l_for_pct:.2f}% de Lista")
+                    st.metric("Lista Naturalizada (88)", f"{l_88_1:,}", f"{l_88_pct:.2f}% de Lista")
+                    st.metric("Lista Hijos de Mex (87)", f"{l_87_1:,}", f"{l_87_pct:.2f}% de Lista")
+        except Exception:
+            pass
 
 st.markdown(
     "<div class='footer-fuente notranslate'>📊 Datos oficiales extraídos de la"
