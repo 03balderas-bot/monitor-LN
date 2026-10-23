@@ -272,18 +272,26 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
 
 def consultar_datos_jovenes_seguro(corte, condicion_where):
     try:
-        c_pjov = col_dinamica("PE_SEX", ["18", "19", "PAD"], ["18_19", "PAD"], ["EDAD", "PAD"], exclude=["LIS", "LNE"])
-        c_ljov = col_dinamica("PE_SEX", ["18", "19", "LIS"], ["18_19", "LIS"], ["EDAD", "LIS"], exclude=["PAD", "PE"])
+        tables_db = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
+        tabla_edad = next((t for t in tables_db if "EDAD" in t.upper() or "RANGO" in t.upper()), "PE_SEX")
+        if tabla_edad not in tables_db:
+            tabla_edad = "PE_SEX"
+
+        c_pjov = col_dinamica(tabla_edad, ["18", "19", "PAD"], ["18_19", "PAD"], ["EDAD", "PAD"], ["18"], exclude=["LIS", "LNE"])
+        c_ljov = col_dinamica(tabla_edad, ["18", "19", "LIS"], ["18_19", "LIS"], ["EDAD", "LIS"], ["18"], exclude=["PAD", "PE"])
         if not c_pjov:
-            c_pjov = col_dinamica("PE_SEX", ["18", "PAD"], exclude=["LIS", "LNE"])
+            c_pjov = col_dinamica(tabla_edad, ["18", "PAD"], exclude=["LIS", "LNE"])
         if not c_ljov:
-            c_ljov = col_dinamica("PE_SEX", ["18", "LIS"], exclude=["PAD", "PE"])
+            c_ljov = col_dinamica(tabla_edad, ["18", "LIS"], exclude=["PAD", "PE"])
+
+        if not c_pjov or not c_ljov:
+            return 0, 0
 
         q = f"""
             SELECT 
                 COALESCE(SUM(CAST({c_pjov} AS REAL)), 0) AS p,
                 COALESCE(SUM(CAST({c_ljov} AS REAL)), 0) AS l
-            FROM PE_SEX 
+            FROM {tabla_edad} 
             WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {condicion_where}
         """
         df_tmp = pd.read_sql_query(q, conn)
@@ -294,18 +302,26 @@ def consultar_datos_jovenes_seguro(corte, condicion_where):
 
 def consultar_datos_mayores_seguro(corte, condicion_where):
     try:
-        c_pmay = col_dinamica("PE_SEX", ["65", "PAD"], ["65_MAS", "PAD"], ["MAYOR", "PAD"], exclude=["LIS", "LNE"])
-        c_lmay = col_dinamica("PE_SEX", ["65", "LIS"], ["65_MAS", "LIS"], ["MAYOR", "LIS"], exclude=["PAD", "PE"])
+        tables_db = pd.read_sql_query("SELECT name FROM sqlite_master WHERE type='table'", conn)["name"].tolist()
+        tabla_edad = next((t for t in tables_db if "EDAD" in t.upper() or "RANGO" in t.upper()), "PE_SEX")
+        if tabla_edad not in tables_db:
+            tabla_edad = "PE_SEX"
+
+        c_pmay = col_dinamica(tabla_edad, ["65", "PAD"], ["65_MAS", "PAD"], ["MAYOR", "PAD"], exclude=["LIS", "LNE"])
+        c_lmay = col_dinamica(tabla_edad, ["65", "LIS"], ["65_MAS", "LIS"], ["MAYOR", "LIS"], exclude=["PAD", "PE"])
         if not c_pmay:
-            c_pmay = col_dinamica("PE_SEX", ["65", "PE"], exclude=["LIS", "LNE"])
+            c_pmay = col_dinamica(tabla_edad, ["65", "PE"], exclude=["LIS", "LNE"])
         if not c_lmay:
-            c_lmay = col_dinamica("PE_SEX", ["65", "LNE"], exclude=["PAD", "PE"])
+            c_lmay = col_dinamica(tabla_edad, ["65", "LNE"], exclude=["PAD", "PE"])
+
+        if not c_pmay or not c_lmay:
+            return 0, 0
 
         q = f"""
             SELECT 
                 COALESCE(SUM(CAST({c_pmay} AS REAL)), 0) AS p,
                 COALESCE(SUM(CAST({c_lmay} AS REAL)), 0) AS l
-            FROM PE_SEX 
+            FROM {tabla_edad} 
             WHERE TRIM(FECHA_CORTE) = TRIM('{corte}') {condicion_where}
         """
         df_tmp = pd.read_sql_query(q, conn)
