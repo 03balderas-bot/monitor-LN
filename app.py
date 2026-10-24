@@ -16,8 +16,58 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.pdfgen import canvas
-from reportlab.platypus import HRFlowable, Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    HRFlowable,
+    Image,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 import streamlit as st
+
+# ==============================================================================
+# CONFIGURACIÓN DE RUTAS Y EXTRACCIÓN DE LA BASE DE DATOS (.7Z)
+# ==============================================================================
+DIR_RAIZ = Path(__file__).parent
+DB_PATH = DIR_RAIZ / "derfe_web.db"
+ARCHIVE_7Z_PATH = DIR_RAIZ / "derfe_web.7z"
+
+if ARCHIVE_7Z_PATH.exists():
+    necesita_extraccion = False
+    if not DB_PATH.exists():
+        necesita_extraccion = True
+    elif ARCHIVE_7Z_PATH.stat().st_mtime > DB_PATH.stat().st_mtime:
+        necesita_extraccion = True
+
+    if necesita_extraccion:
+        try:
+            if DB_PATH.exists():
+                DB_PATH.unlink()
+            with py7zr.SevenZipFile(ARCHIVE_7Z_PATH, mode="r") as z:
+                z.extractall(path=DIR_RAIZ)
+        except Exception as e:
+            st.error(f"Error al descomprimir derfe_web.7z: {e}")
+
+# ==============================================================================
+# INICIALIZACIÓN DE LA CONEXIÓN A LA BASE DE DATOS
+# ==============================================================================
+def get_conn():
+    if not DB_PATH.exists():
+        st.error(
+            f"⚠️ Base de datos no encontrada en: {DB_PATH}. Asegúrate de que"
+            " 'derfe_web.7z' esté cargado en el repositorio."
+        )
+        st.stop()
+    return sqlite3.connect(str(DB_PATH), check_same_thread=False)
+
+conn = get_conn()
+
+# ==============================================================================
+# OBTENCIÓN Y ORDENAMIENTO DE CORTES
+# ==============================================================================
 def obtener_cortes_ordenados():
     try:
         import re  # Aseguramos que la librería esté cargada
