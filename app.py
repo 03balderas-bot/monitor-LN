@@ -600,7 +600,7 @@ def renderizar_grafica_posicionamiento(
           height=780,
       )
       st.plotly_chart(fig, width="stretch")
-   def generar_grafico_volumen_pdf(corte, cve_ent, cve_dist):
+def generar_grafico_volumen_pdf(corte, cve_ent, cve_dist):
   try:
     if not cve_ent:
       return None
