@@ -96,6 +96,13 @@ def obtener_cortes_ordenados():
     except Exception as e:
         st.sidebar.error(f"Error técnico al leer fechas: {e}")
         return []
+def formatear_corte(corte_str):
+    if not corte_str:
+        return ""
+    v = str(corte_str).strip()
+    if len(v) == 8 and v.isdigit():
+        return f"{v[:4]}-{v[4:6]}-{v[6:]}"
+    return v
 def consultar_datos_agregados_seguro(corte, condicion_where):
     try:
         corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
