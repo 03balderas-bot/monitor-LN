@@ -3,6 +3,37 @@
 # ==============================================================================
 
 import streamlit as st
+def obtener_cortes_ordenados():
+    try:
+        tables_db = pd.read_sql_query(
+            "SELECT name FROM sqlite_master WHERE type='table'", conn
+        )["name"].tolist()
+        tabla_fechas = (
+            "PE_SEX"
+            if "PE_SEX" in tables_db
+            else ("PE_EO" if "PE_EO" in tables_db else None)
+        )
+        if not tabla_fechas:
+            return []
+
+        df = pd.read_sql_query(
+            f"SELECT DISTINCT FECHA_CORTE FROM {tabla_fechas}", conn
+        )
+        lista = sorted(
+            {str(x).strip() for x in df["FECHA_CORTE"].tolist() if str(x).strip()}
+        )
+
+        def key_orden(val):
+            v = val.strip().upper()
+            if v.isdigit() and len(v) == 8:
+                return (int(v[:4]), int(v[4:6]), int(v[6:8]), v)
+            anio = re.search(r"(\d{4})", v)
+            return (int(anio.group(1)) if anio else 0, 0, 0, v)
+
+        lista.sort(key=key_orden, reverse=True)
+        return lista
+    except Exception:
+        return []
 def consultar_datos_agregados_seguro(corte, condicion_where):
     try:
         corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
