@@ -1,6 +1,8 @@
 # ==============================================================================
 # BLOQUE 1: FUNCIONES DE CONSULTA SQL Y GRÁFICAS (CON FECHAS BLINDADAS)
 # ==============================================================================
+
+import streamlit as st
 def consultar_datos_agregados_seguro(corte, condicion_where):
     try:
         corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
