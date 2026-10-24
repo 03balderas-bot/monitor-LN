@@ -5,23 +5,19 @@
 import streamlit as st
 def obtener_cortes_ordenados():
     try:
+        import re  # Aseguramos que la librería esté cargada
         tables_db = pd.read_sql_query(
             "SELECT name FROM sqlite_master WHERE type='table'", conn
         )["name"].tolist()
-        tabla_fechas = (
-            "PE_SEX"
-            if "PE_SEX" in tables_db
-            else ("PE_EO" if "PE_EO" in tables_db else None)
-        )
+        
+        tabla_fechas = "PE_SEX" if "PE_SEX" in tables_db else ("PE_EO" if "PE_EO" in tables_db else None)
+        
         if not tabla_fechas:
+            st.sidebar.error(f"Tablas detectadas en la BD: {tables_db}")
             return []
 
-        df = pd.read_sql_query(
-            f"SELECT DISTINCT FECHA_CORTE FROM {tabla_fechas}", conn
-        )
-        lista = sorted(
-            {str(x).strip() for x in df["FECHA_CORTE"].tolist() if str(x).strip()}
-        )
+        df = pd.read_sql_query(f"SELECT DISTINCT FECHA_CORTE FROM {tabla_fechas}", conn)
+        lista = sorted({str(x).strip() for x in df["FECHA_CORTE"].tolist() if str(x).strip()})
 
         def key_orden(val):
             v = val.strip().upper()
@@ -32,7 +28,8 @@ def obtener_cortes_ordenados():
 
         lista.sort(key=key_orden, reverse=True)
         return lista
-    except Exception:
+    except Exception as e:
+        st.sidebar.error(f"Error técnico al leer fechas: {e}")
         return []
 def consultar_datos_agregados_seguro(corte, condicion_where):
     try:
