@@ -103,6 +103,24 @@ def formatear_corte(corte_str):
     if len(v) == 8 and v.isdigit():
         return f"{v[:4]}-{v[4:6]}-{v[6:]}"
     return v
+def col_dinamica(tabla, *criterios_lista, exclude=None):
+    if exclude is None:
+        exclude = []
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"PRAGMA table_info({tabla})")
+        columnas = [row[1] for row in cursor.fetchall()]
+        
+        for criterios in criterios_lista:
+            for col in columnas:
+                col_upper = col.upper()
+                if any(exc.upper() in col_upper for exc in exclude):
+                    continue
+                if all(crit.upper() in col_upper for crit in criterios):
+                    return col
+        return columnas[1] if len(columnas) > 1 else columnas[0]
+    except Exception:
+        return ""
 def consultar_datos_agregados_seguro(corte, condicion_where):
     try:
         corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
