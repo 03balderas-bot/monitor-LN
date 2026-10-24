@@ -2,6 +2,21 @@
 # BLOQUE 1: FUNCIONES DE CONSULTA SQL Y GRÁFICAS (CON FECHAS BLINDADAS)
 # ==============================================================================
 
+import sqlite3
+import unicodedata
+from datetime import datetime
+from io import BytesIO
+from pathlib import Path
+import matplotlib.pyplot as plt
+import pandas as pd
+import plotly.graph_objects as go
+import py7zr
+import re
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.pdfgen import canvas
+from reportlab.platypus import HRFlowable, Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 import streamlit as st
 def obtener_cortes_ordenados():
     try:
