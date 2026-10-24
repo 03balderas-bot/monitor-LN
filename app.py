@@ -176,7 +176,8 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
             "h_padron": h_p, "h_lista": h_l, "m_padron": m_p, "m_lista": m_l, "nb_padron": nb_p, "nb_lista": nb_l,
             "p_nat": p_n, "l_nat": l_n, "p_for": p_f, "l_for": l_f, "p_87": p_7, "l_87": l_7, "p_88": p_8, "l_88": l_8,
         }])
-    except Exception:
+    except Exception as e:
+        st.error(f"Error detallado en consultar_datos_agregados_seguro: {e}")
         return pd.DataFrame([{
             "padron": 0, "lista": 0, "h_padron": 0, "h_lista": 0, "m_padron": 0, "m_lista": 0, "nb_padron": 0, "nb_lista": 0,
             "p_nat": 0, "l_nat": 0, "p_for": 0, "l_for": 0, "p_87": 0, "l_87": 0, "p_88": 0, "l_88": 0,
