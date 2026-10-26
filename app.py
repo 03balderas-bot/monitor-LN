@@ -93,12 +93,13 @@ CATALOGO_ENTIDADES = {
 # ==============================================================================
 # FUNCIÓN DE CÁLCULO DE VARIACIÓN
 # ==============================================================================
-def calc_var_str(val_nuevo, val_anterior):
+def calc_var_str(diferencia, val_anterior):
+    """Texto de variación. Recibe la DIFERENCIA ya calculada (nuevo - anterior)
+    y el valor anterior, para obtener el porcentaje."""
     try:
-        diff = val_nuevo - val_anterior
-        pct = (diff / val_anterior * 100) if val_anterior > 0 else 0.0
-        signo = "+" if diff > 0 else ""
-        return f"{signo}{diff:,} ({signo}{pct:.2f}%)"
+        pct = (diferencia / val_anterior * 100) if val_anterior > 0 else 0.0
+        signo = "+" if diferencia > 0 else ""
+        return f"{signo}{diferencia:,} ({signo}{pct:.2f}%)"
     except Exception:
         return "N/A"
 
@@ -2299,18 +2300,18 @@ if modo == "Comparar con Periodo Previo" and corte_base:
     gh1, gh2, gh3 = st.columns(3)
     with gh1:
         st.markdown("**👨 Hombres**")
-        st.metric("Padrón", f"{h_padron_1:,}", calc_var_str(dh_p, h_padron_2), delta_color="normal" if dh_p >= 0 else "inverse")
-        st.metric("Lista Nominal", f"{h_lista_1:,}", calc_var_str(dh_l, h_lista_2), delta_color="normal" if dh_l >= 0 else "inverse")
+        st.metric("Padrón", f"{h_padron_1:,}", calc_var_str(dh_p, h_padron_2), delta_color="normal")
+        st.metric("Lista Nominal", f"{h_lista_1:,}", calc_var_str(dh_l, h_lista_2), delta_color="normal")
         st.text(f"Cobertura: {hcob_1:.2f}%")
     with gh2:
         st.markdown("**👩 Mujeres**")
-        st.metric("Padrón", f"{m_padron_1:,}", calc_var_str(dm_p, m_padron_2), delta_color="normal" if dm_p >= 0 else "inverse")
-        st.metric("Lista Nominal", f"{m_lista_1:,}", calc_var_str(dm_l, m_lista_2), delta_color="normal" if dm_l >= 0 else "inverse")
+        st.metric("Padrón", f"{m_padron_1:,}", calc_var_str(dm_p, m_padron_2), delta_color="normal")
+        st.metric("Lista Nominal", f"{m_lista_1:,}", calc_var_str(dm_l, m_lista_2), delta_color="normal")
         st.text(f"Cobertura: {mcob_1:.2f}%")
     with gh3:
         st.markdown("**⚧ No Binarios**")
-        st.metric("Padrón", f"{nb_padron_1:,}", calc_var_str(dnb_p, nb_padron_2), delta_color="normal" if dnb_p >= 0 else "inverse")
-        st.metric("Lista Nominal", f"{nb_lista_1:,}", calc_var_str(dnb_l, nb_lista_2), delta_color="normal" if dnb_l >= 0 else "inverse")
+        st.metric("Padrón", f"{nb_padron_1:,}", calc_var_str(dnb_p, nb_padron_2), delta_color="normal")
+        st.metric("Lista Nominal", f"{nb_lista_1:,}", calc_var_str(dnb_l, nb_lista_2), delta_color="normal")
         st.text(f"Cobertura: {nbcob_1:.2f}%")
 else:
     gh1, gh2, gh3 = st.columns(3)
@@ -2373,8 +2374,8 @@ with tab_jovenes:
         dp_jov = pjov_1 - pjov_2
         dl_jov = ljov_1 - ljov_2
         j1, j2, j3, j4 = st.columns(4)
-        j1.metric("Padrón (18-19 años)", f"{pjov_1:,}", calc_var_str(dp_jov, pjov_2), delta_color="normal" if dp_jov >= 0 else "inverse")
-        j2.metric("Lista Nominal (18-19 años)", f"{ljov_1:,}", calc_var_str(dl_jov, ljov_2), delta_color="normal" if dl_jov >= 0 else "inverse")
+        j1.metric("Padrón (18-19 años)", f"{pjov_1:,}", calc_var_str(dp_jov, pjov_2), delta_color="normal")
+        j2.metric("Lista Nominal (18-19 años)", f"{ljov_1:,}", calc_var_str(dl_jov, ljov_2), delta_color="normal")
         j3.metric("Cobertura Registral", f"{cobjov_1:.2f}%")
         j4.metric("Peso en Padrón / Lista", f"{(pjov_1/p1*100) if p1>0 else 0:.2f}% / {(ljov_1/l1*100) if l1>0 else 0:.2f}%")
     else:
@@ -2390,8 +2391,8 @@ with tab_mayores:
         dp_may = pmay_1 - pmay_2
         dl_may = lmay_1 - lmay_2
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Padrón (65 años y más)", f"{pmay_1:,}", calc_var_str(dp_may, pmay_2), delta_color="normal" if dp_may >= 0 else "inverse")
-        m2.metric("Lista Nominal (65 años y más)", f"{lmay_1:,}", calc_var_str(dl_may, lmay_2), delta_color="normal" if dl_may >= 0 else "inverse")
+        m1.metric("Padrón (65 años y más)", f"{pmay_1:,}", calc_var_str(dp_may, pmay_2), delta_color="normal")
+        m2.metric("Lista Nominal (65 años y más)", f"{lmay_1:,}", calc_var_str(dl_may, lmay_2), delta_color="normal")
         m3.metric("Cobertura Registral", f"{cobmay_1:.2f}%")
         m4.metric("Peso en Padrón / Lista", f"{(pmay_1/p1*100) if p1>0 else 0:.2f}% / {(lmay_1/l1*100) if l1>0 else 0:.2f}%")
     else:
@@ -2485,10 +2486,10 @@ with tab_origen:
                     dp_88 = p_88_1 - p_88_2
                     dp_87 = p_87_1 - p_87_2
 
-                    st.metric("Padrón Nativo", f"{p_nat_1:,}", f"{calc_var_str(dp_nat, p_nat_2)} | Estructura: {p_nat_pct:.2f}%", delta_color="normal" if dp_nat >= 0 else "inverse")
-                    st.metric("Padrón Foráneo", f"{p_for_1:,}", f"{calc_var_str(dp_for, p_for_2)} | Estructura: {p_for_pct:.2f}%", delta_color="normal" if dp_for >= 0 else "inverse")
-                    st.metric("Padrón Naturalizado (88)", f"{p_88_1:,}", f"{calc_var_str(dp_88, p_88_2)} | Estructura: {p_88_pct:.2f}%", delta_color="normal" if dp_88 >= 0 else "inverse")
-                    st.metric("Padrón Hijos de Mex (87)", f"{p_87_1:,}", f"{calc_var_str(dp_87, p_87_2)} | Estructura: {p_87_pct:.2f}%", delta_color="normal" if dp_87 >= 0 else "inverse")
+                    st.metric("Padrón Nativo", f"{p_nat_1:,}", f"{calc_var_str(dp_nat, p_nat_2)} | Estructura: {p_nat_pct:.2f}%", delta_color="normal")
+                    st.metric("Padrón Foráneo", f"{p_for_1:,}", f"{calc_var_str(dp_for, p_for_2)} | Estructura: {p_for_pct:.2f}%", delta_color="normal")
+                    st.metric("Padrón Naturalizado (88)", f"{p_88_1:,}", f"{calc_var_str(dp_88, p_88_2)} | Estructura: {p_88_pct:.2f}%", delta_color="normal")
+                    st.metric("Padrón Hijos de Mex (87)", f"{p_87_1:,}", f"{calc_var_str(dp_87, p_87_2)} | Estructura: {p_87_pct:.2f}%", delta_color="normal")
                 else:
                     st.metric("Padrón Nativo", f"{p_nat_1:,}", f"{p_nat_pct:.2f}% del Padrón")
                     st.metric("Padrón Foráneo", f"{p_for_1:,}", f"{p_for_pct:.2f}% del Padrón")
@@ -2503,10 +2504,10 @@ with tab_origen:
                     dl_88 = l_88_1 - l_88_2
                     dl_87 = l_87_1 - l_87_2
 
-                    st.metric("Lista Nativa", f"{l_nat_1:,}", f"{calc_var_str(dl_nat, l_nat_2)} | Estructura: {l_nat_pct:.2f}%", delta_color="normal" if dl_nat >= 0 else "inverse")
-                    st.metric("Lista Foránea", f"{l_for_1:,}", f"{calc_var_str(dl_for, l_for_2)} | Estructura: {l_for_pct:.2f}%", delta_color="normal" if dl_for >= 0 else "inverse")
-                    st.metric("Lista Naturalizada (88)", f"{l_88_1:,}", f"{calc_var_str(dl_88, l_88_2)} | Estructura: {l_88_pct:.2f}%", delta_color="normal" if dl_88 >= 0 else "inverse")
-                    st.metric("Lista Hijos de Mex (87)", f"{l_87_1:,}", f"{calc_var_str(dl_87, l_87_2)} | Estructura: {l_87_pct:.2f}%", delta_color="normal" if dl_87 >= 0 else "inverse")
+                    st.metric("Lista Nativa", f"{l_nat_1:,}", f"{calc_var_str(dl_nat, l_nat_2)} | Estructura: {l_nat_pct:.2f}%", delta_color="normal")
+                    st.metric("Lista Foránea", f"{l_for_1:,}", f"{calc_var_str(dl_for, l_for_2)} | Estructura: {l_for_pct:.2f}%", delta_color="normal")
+                    st.metric("Lista Naturalizada (88)", f"{l_88_1:,}", f"{calc_var_str(dl_88, l_88_2)} | Estructura: {l_88_pct:.2f}%", delta_color="normal")
+                    st.metric("Lista Hijos de Mex (87)", f"{l_87_1:,}", f"{calc_var_str(dl_87, l_87_2)} | Estructura: {l_87_pct:.2f}%", delta_color="normal")
                 else:
                     st.metric("Lista Nativa", f"{l_nat_1:,}", f"{l_nat_pct:.2f}% de Lista")
                     st.metric("Lista Foránea", f"{l_for_1:,}", f"{l_for_pct:.2f}% de Lista")
