@@ -55,40 +55,98 @@ if ARCHIVE_7Z_PATH.exists():
 # CATÁLOGO DE ENTIDADES FEDERATIVAS
 # ==============================================================================
 CATALOGO_ENTIDADES = {
-    "Aguascalientes": "01",
-    "Baja California": "02",
-    "Baja California Sur": "03",
-    "Campeche": "04",
-    "Coahuila de Zaragoza": "05",
-    "Colima": "06",
-    "Chiapas": "07",
-    "Chihuahua": "08",
-    "Ciudad de México": "09",
-    "Durango": "10",
-    "Guanajuato": "11",
-    "Guerrero": "12",
-    "Hidalgo": "13",
-    "Jalisco": "14",
-    "México": "15",
-    "Michoacán de Ocampo": "16",
-    "Morelos": "17",
-    "Nayarit": "18",
-    "Nuevo León": "19",
-    "Oaxaca": "20",
-    "Puebla": "21",
-    "Querétaro": "22",
-    "Quintana Roo": "23",
-    "San Luis Potosí": "24",
-    "Sinaloa": "25",
-    "Sonora": "26",
-    "Tabasco": "27",
-    "Tamaulipas": "28",
-    "Tlaxcala": "29",
-    "Veracruz de Ignacio de la Llave": "30",
-    "Yucatán": "31",
-    "Zacatecas": "32",
-    "Extranjero": "33"
+    1: "Aguascalientes",
+    2: "Baja California",
+    3: "Baja California Sur",
+    4: "Campeche",
+    5: "Coahuila de Zaragoza",
+    6: "Colima",
+    7: "Chiapas",
+    8: "Chihuahua",
+    9: "Ciudad de México",
+    10: "Durango",
+    11: "Guanajuato",
+    12: "Guerrero",
+    13: "Hidalgo",
+    14: "Jalisco",
+    15: "México",
+    16: "Michoacán de Ocampo",
+    17: "Morelos",
+    18: "Nayarit",
+    19: "Nuevo León",
+    20: "Oaxaca",
+    21: "Puebla",
+    22: "Querétaro",
+    23: "Quintana Roo",
+    24: "San Luis Potosí",
+    25: "Sinaloa",
+    26: "Sonora",
+    27: "Tabasco",
+    28: "Tamaulipas",
+    29: "Tlaxcala",
+    30: "Veracruz de Ignacio de la Llave",
+    31: "Yucatán",
+    32: "Zacatecas",
+    33: "Extranjero",
 }
+
+# ==============================================================================
+# FUNCIÓN DE CÁLCULO DE VARIACIÓN
+# ==============================================================================
+def calc_var_str(val_nuevo, val_anterior):
+    try:
+        diff = val_nuevo - val_anterior
+        pct = (diff / val_anterior * 100) if val_anterior > 0 else 0.0
+        signo = "+" if diff > 0 else ""
+        return f"{signo}{diff:,} ({signo}{pct:.2f}%)"
+    except Exception:
+        return "N/A"
+
+# ==============================================================================
+# ELEMENTOS DE ESTILO PARA EL REPORTE PDF
+# ==============================================================================
+styles_pdf = getSampleStyleSheet()
+ine_purple = colors.HexColor("#5C3A92")
+ine_dark = colors.HexColor("#4A2E7A")
+LOGO_PATH = next(
+    (p for p in sorted(DIR_RAIZ.iterdir())
+     if "logo" in p.name.lower() and p.suffix.lower() in (".png", ".jpg", ".jpeg")),
+    DIR_RAIZ / "logo_ine.png",
+)
+
+
+class NumberedCanvas(canvas.Canvas):
+    """Encabezado (desde la pág. 2) y pie con 'Página X de Y'."""
+
+    def __init__(self, *args, **kwargs):
+        canvas.Canvas.__init__(self, *args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        total = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self._dibujar_marcos(total)
+            canvas.Canvas.showPage(self)
+        canvas.Canvas.save(self)
+
+    def _dibujar_marcos(self, total):
+        ancho, alto = letter
+        self.setFont("Helvetica", 7)
+        self.setFillColor(colors.HexColor("#64748B"))
+        if self._pageNumber > 1:
+            self.drawString(
+                36, alto - 18,
+                "INSTITUTO NACIONAL ELECTORAL | DERFE - Monitor Histórico del Padrón y Lista Nominal",
+            )
+            self.setStrokeColor(colors.HexColor("#CBD5E1"))
+            self.line(36, alto - 22, ancho - 36, alto - 22)
+        self.drawString(36, 14, "Reporte Ejecutivo emitido conforme a datos abiertos de la DERFE")
+        self.drawRightString(ancho - 36, 14, f"Página {self._pageNumber} de {total}")
 # ==============================================================================
 # INICIALIZACIÓN DE LA CONEXIÓN A LA BASE DE DATOS
 # ==============================================================================
@@ -141,7 +199,7 @@ def formatear_corte(corte_str):
     if len(v) == 8 and v.isdigit():
         return f"{v[:4]}-{v[4:6]}-{v[6:]}"
     return v
-def col_dinamica(tabla, *criterios_lista, exclude=None):
+def col_dinamica(tabla, *criterios_lista, exclude=None, default="__primera__"):
     if exclude is None:
         exclude = []
     try:
@@ -156,9 +214,11 @@ def col_dinamica(tabla, *criterios_lista, exclude=None):
                     continue
                 if all(crit.upper() in col_upper for crit in criterios):
                     return col
+        if default != "__primera__":
+            return default
         return columnas[1] if len(columnas) > 1 else columnas[0]
     except Exception:
-        return ""
+        return default if default != "__primera__" else ""
 def consultar_datos_agregados_seguro(corte, condicion_where):
     try:
         corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
@@ -188,7 +248,7 @@ def consultar_datos_agregados_seguro(corte, condicion_where):
         c_pfor = col_dinamica("PE_EO", ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"], ["FORANEO"], exclude=["LIS", "LNE"])
         c_lfor = col_dinamica("PE_EO", ["FORANEO", "LIS"], ["FORANEO", "LNE"], ["FOR", "LIS"], ["FORANEO"], exclude=["PAD", "PE"])
         c_p87 = col_dinamica("PE_EO", ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"], ["HIJO"], ["MEXICANO"], ["87"], exclude=["LIS", "LNE", "88", "NATURALIZADO"])
-        c_l87 = col_dinamica("PE_EO", ["HIJO", "LIS"], ["HIJO", "LNE"], ["MEXICANO", "LIS"], ["HIJO"], ["MEXICANO"], ["87"], exclude=["PAD", "PE", "88", "NATURALIZADO"])
+        c_l87 = col_dinamica("PE_EO", ["HIJO", "LIS"], ["HIJO", "LNE"], ["MEXICANO", "LIS"], ["HIJO"], ["MEXICANO"], ["87"], exclude=["PADRON", "PE_", "88", "NATURALIZADO"])
         c_p88 = col_dinamica("PE_EO", ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"], ["NATURALIZADO"], ["88"], exclude=["LIS", "LNE", "87", "HIJO", "MEXICANO"])
         c_l88 = col_dinamica("PE_EO", ["NATURALIZADO", "LIS"], ["NATURALIZADO", "LNE"], ["88", "LIS"], ["NATURALIZADO"], ["88"], exclude=["PAD", "PE", "87", "HIJO", "MEXICANO"])
 
@@ -821,98 +881,62 @@ def generar_grafico_volumen_pdf(corte, cve_ent, cve_dist):
 def generar_grafico_posicionamiento_pdf(
     corte, alcance_tipo, cve_ent, cve_dist, modo_comp=False, corte_base_comp=None
 ):
+  """Ritmo de crecimiento del Padrón (%) por distrito de la entidad.
+  La cobertura registral ya no se grafica: casi no varía entre distritos."""
   try:
+    if not cve_ent or not (modo_comp and corte_base_comp):
+      return None
+    nom_ent = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")
     c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
     c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
     c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
-    c_hl = col_dinamica("PE_SEX", ["HOMBRE", "LIS"], ["HOMBRE", "LNE"])
-    c_ml = col_dinamica("PE_SEX", ["MUJER", "LIS"], ["MUJER", "LNE"])
-    c_nbl = col_dinamica("PE_SEX", ["BINARIO", "LIS"], ["NB", "LIS"], ["NO_BINARIO", "LIS"])
+    r = str(corte).strip().replace("-", "").replace("_", "")
+    b = str(corte_base_comp).strip().replace("-", "").replace("_", "")
+    q = f"""
+        SELECT CLAVE_DISTRITO,
+               SUM(COALESCE(CAST({c_hp} AS REAL),0) + COALESCE(CAST({c_mp} AS REAL),0) + COALESCE(CAST({c_nbp} AS REAL),0)) AS PADRON
+        FROM PE_SEX WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = ? AND CLAVE_ENTIDAD = ? AND CLAVE_DISTRITO != 0
+        GROUP BY CLAVE_DISTRITO
+    """
+    df_r = pd.read_sql_query(q, conn, params=[r, int(cve_ent)]).rename(columns={"PADRON": "PADRON_REC"})
+    df_b = pd.read_sql_query(q, conn, params=[b, int(cve_ent)]).rename(columns={"PADRON": "PADRON_BAS"})
+    df = pd.merge(df_r, df_b, on="CLAVE_DISTRITO")
+    df = df[df["PADRON_BAS"] > 0].copy()
+    if df.empty:
+      return None
 
-    corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
+    df["VALOR"] = ((df["PADRON_REC"] - df["PADRON_BAS"]) / df["PADRON_BAS"]) * 100
+    df = df.sort_values(by="VALOR", ascending=True)
+    promedio = ((df["PADRON_REC"].sum() - df["PADRON_BAS"].sum()) / df["PADRON_BAS"].sum()) * 100
 
-    if cve_ent:
-      nom_ent = CATALOGO_ENTIDADES.get(cve_ent, "Entidad")
-      c_cab = col_dinamica("PE_SEX", ["CABECERA"])
+    colores = [
+        "#D946EF" if cve_dist and int(d) == int(cve_dist) else "#64748B"
+        for d in df["CLAVE_DISTRITO"]
+    ]
+    etiquetas = [f"Dist. {int(d):02d}" for d in df["CLAVE_DISTRITO"]]
+    titulo = f"2. Ritmo de Crecimiento del Padrón (%) en {nom_ent}" + (
+        f" (Dist. {cve_dist:02d} resaltado)" if cve_dist else ""
+    )
 
-      if modo_comp and corte_base_comp:
-        corte_base_limpio = str(corte_base_comp).strip().replace("-", "").replace("_", "")
-        q_rec = f"""
-                    SELECT CLAVE_DISTRITO, MAX({c_cab}) AS CABECERA,
-                           SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) AS PADRON_REC
-                    FROM PE_SEX WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = ? AND CLAVE_ENTIDAD = ? AND CLAVE_DISTRITO != 0
-                    GROUP BY CLAVE_DISTRITO
-                """
-        q_bas = f"""
-                    SELECT CLAVE_DISTRITO,
-                           SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) AS PADRON_BAS
-                    FROM PE_SEX WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = ? AND CLAVE_ENTIDAD = ? AND CLAVE_DISTRITO != 0
-                    GROUP BY CLAVE_DISTRITO
-                """
-        df_r = pd.read_sql_query(q_rec, conn, params=[corte_limpio, int(cve_ent)])
-        df_b = pd.read_sql_query(q_bas, conn, params=[corte_base_limpio, int(cve_ent)])
-        df = pd.merge(df_r, df_b, on="CLAVE_DISTRITO")
-        if df.empty:
-          return None
+    alt = max(2.2, min(4.0, len(df) * 0.25))
+    fig, ax = plt.subplots(figsize=(6.8, alt))
+    barras = ax.barh(etiquetas, df["VALOR"], color=colores, height=0.65)
+    ax.bar_label(barras, labels=[f"{v:+.2f}%" for v in df["VALOR"]], fontsize=6.5, padding=2)
+    ax.axvline(promedio, color="#F59E0B", linestyle="--", linewidth=1.2, label=f"Media: {promedio:.2f}%")
+    ax.axvline(0, color="#334155", linewidth=0.6)
+    ax.margins(x=0.14)
+    ax.set_title(titulo, fontsize=9, fontweight="bold", color="#4A2E7A")
+    ax.set_xlabel("Variación Porcentual (%)", fontsize=8)
+    ax.tick_params(axis="x", labelsize=7.5)
+    ax.tick_params(axis="y", labelsize=7.5)
+    ax.legend(loc="best", fontsize=7.5)
+    fig.tight_layout()
 
-        df["VALOR"] = ((df["PADRON_REC"] - df["PADRON_BAS"]) / df["PADRON_BAS"]) * 100
-        df = df.sort_values(by="VALOR", ascending=True)
-        promedio = ((df["PADRON_REC"].sum() - df["PADRON_BAS"].sum()) / df["PADRON_BAS"].sum()) * 100
-
-        colores = [
-            "#D946EF" if cve_dist and int(d) == int(cve_dist) else "#64748B"
-            for d in df["CLAVE_DISTRITO"]
-        ]
-        etiquetas = [f"Dist. {int(d):02d}" for d in df["CLAVE_DISTRITO"]]
-        titulo = f"2. Ritmo de Crecimiento del Padrón (%) en {nom_ent}" + (f" (Dist. {cve_dist:02d} resaltado)" if cve_dist else "")
-        x_label = "Variación Porcentual (%)"
-
-      else:
-        q = f"""
-                    SELECT CLAVE_DISTRITO,
-                           SUM(CAST({c_hp} AS REAL) + CAST({c_mp} AS REAL) + CAST({c_nbp} AS REAL)) AS PADRON,
-                           SUM(CAST({c_hl} AS REAL) + CAST({c_ml} AS REAL) + CAST({c_nbl} AS REAL)) AS LISTA
-                    FROM PE_SEX WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = ? AND CLAVE_ENTIDAD = ? AND CLAVE_DISTRITO != 0
-                    GROUP BY CLAVE_DISTRITO
-                """
-        df = pd.read_sql_query(q, conn, params=[corte_limpio, int(cve_ent)])
-        if df.empty:
-          return None
-
-        df["VALOR"] = (df["LISTA"] / df["PADRON"]) * 100
-        df = df.sort_values(by="VALOR", ascending=True)
-        promedio = (df["LISTA"].sum() / df["PADRON"].sum()) * 100
-
-        colores = [
-            "#D946EF" if cve_dist and int(d) == int(cve_dist) else "#10B981"
-            for d in df["CLAVE_DISTRITO"]
-        ]
-        etiquetas = [f"Dist. {int(d):02d}" for d in df["CLAVE_DISTRITO"]]
-        titulo = f"2. Cobertura Registral (%) en {nom_ent}" + (f" (Dist. {cve_dist:02d} resaltado)" if cve_dist else "")
-        x_label = "Cobertura Registral (%)"
-
-      alt = max(2.2, min(4.0, len(df) * 0.25))
-      plt.figure(figsize=(6.8, alt))
-      plt.barh(etiquetas, df["VALOR"], color=colores, height=0.65)
-      plt.axvline(
-          promedio,
-          color="#F59E0B",
-          linestyle="--",
-          linewidth=1.2,
-          label=f"Media: {promedio:.2f}%",
-      )
-      plt.title(titulo, fontsize=9, fontweight="bold", color="#4A2E7A")
-      plt.xlabel(x_label, fontsize=8)
-      plt.xticks(fontsize=7.5)
-      plt.yticks(fontsize=7.5)
-      plt.legend(loc="lower right", fontsize=7.5)
-      plt.tight_layout()
-
-      buf = BytesIO()
-      plt.savefig(buf, format="png", dpi=220)
-      plt.close()
-      buf.seek(0)
-      return buf
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=220)
+    plt.close(fig)
+    buf.seek(0)
+    return buf
   except Exception as e:
     print(f"Error en generar_grafico_posicionamiento_pdf: {e}")
     return None
@@ -958,6 +982,8 @@ def generar_grafico_distritos_menor_1(corte_rec, corte_bas):
     )
     if df_sub.empty:
       return None
+    total_n = len(df_sub)
+    df_sub = df_sub.head(15).copy()  # máx. 15 barras para que sea legible
 
     df_sub["etiqueta"] = (
         df_sub["CLAVE_ENTIDAD"].map(CATALOGO_ENTIDADES)
@@ -978,8 +1004,7 @@ def generar_grafico_distritos_menor_1(corte_rec, corte_bas):
     )
     ax.invert_yaxis()
     ax.set_title(
-        f"Distritos Federales con Menor Dinamismo / Contracción (Crecimiento ≤"
-        f" 1.0%) - Total: {len(df_sub)}",
+        f"Distritos Federales con Menor Dinamismo / Contracción\n(Crecimiento ≤ 1.0%) - Total: {total_n}",
         fontsize=9,
         fontweight="bold",
         color="#4A2E7A",
@@ -990,8 +1015,8 @@ def generar_grafico_distritos_menor_1(corte_rec, corte_bas):
     )
     ax.tick_params(axis="x", labelsize=7.5)
     ax.tick_params(axis="y", labelsize=7.5)
-    ax.legend(loc="lower right", fontsize=7.5)
-    fig.subplots_adjust(left=0.28, right=0.96, top=0.92, bottom=0.10)
+    ax.legend(loc="best", fontsize=7.5)
+    fig.subplots_adjust(left=0.28, right=0.96, top=0.88, bottom=0.10)
 
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=220)
@@ -1043,6 +1068,8 @@ def generar_grafico_distritos_mayor_10(corte_rec, corte_bas):
     )
     if df_sub.empty:
       return None
+    total_n = len(df_sub)
+    df_sub = df_sub.tail(15).copy()  # máx. 15 barras para que sea legible
 
     df_sub["etiqueta"] = (
         df_sub["CLAVE_ENTIDAD"].map(CATALOGO_ENTIDADES)
@@ -1062,8 +1089,7 @@ def generar_grafico_distritos_mayor_10(corte_rec, corte_bas):
     )
     ax.invert_yaxis()
     ax.set_title(
-        f"Distritos Federales con Fuerte Expansión Demográfica (Crecimiento ≥"
-        f" 10.0%) - Total: {len(df_sub)}",
+        f"Distritos Federales con Fuerte Expansión Demográfica\n(Crecimiento ≥ 10.0%) - Total: {total_n}",
         fontsize=9,
         fontweight="bold",
         color="#4A2E7A",
@@ -1074,8 +1100,8 @@ def generar_grafico_distritos_mayor_10(corte_rec, corte_bas):
     )
     ax.tick_params(axis="x", labelsize=7.5)
     ax.tick_params(axis="y", labelsize=7.5)
-    ax.legend(loc="lower right", fontsize=7.5)
-    fig.subplots_adjust(left=0.28, right=0.96, top=0.92, bottom=0.10)
+    ax.legend(loc="best", fontsize=7.5)
+    fig.subplots_adjust(left=0.28, right=0.96, top=0.88, bottom=0.10)
 
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=220)
@@ -1152,6 +1178,7 @@ def generar_grafico_top_mayores(corte):
           ["MAYOR", "PAD"],
           ["ADULTO", "PAD"],
           ["65", "PAD"],
+          ["65", "PE"],
           exclude=["LIS", "LNE", "HOMBRE", "MUJER", "BINARIO", "NB"],
           default=None,
       )
@@ -1455,6 +1482,162 @@ def generar_analisis_foraneos_texto(corte_rec):
     pass
   return ""
 
+_ENT_CORTO = {
+    "Veracruz de Ignacio de la Llave": "Veracruz",
+    "Coahuila de Zaragoza": "Coahuila",
+    "Michoacán de Ocampo": "Michoacán",
+}
+
+def _ent_corto(cve):
+  nom = CATALOGO_ENTIDADES.get(int(cve), "Entidad")
+  return _ENT_CORTO.get(nom, nom)
+
+def _comparar_distritos(corte_rec, corte_bas):
+  """Padrón por distrito federal en el corte reciente y en el base."""
+  c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+  c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+  c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
+  q = f"""
+      SELECT CLAVE_ENTIDAD, CLAVE_DISTRITO,
+             SUM(COALESCE(CAST({c_hp} AS REAL),0) + COALESCE(CAST({c_mp} AS REAL),0) + COALESCE(CAST({c_nbp} AS REAL),0)) AS PADRON
+      FROM PE_SEX WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = ? AND CLAVE_DISTRITO != 0
+      GROUP BY CLAVE_ENTIDAD, CLAVE_DISTRITO
+  """
+  r = str(corte_rec).strip().replace("-", "").replace("_", "")
+  b = str(corte_bas).strip().replace("-", "").replace("_", "")
+  df_r = pd.read_sql_query(q, conn, params=[r]).rename(columns={"PADRON": "PADRON_REC"})
+  df_b = pd.read_sql_query(q, conn, params=[b]).rename(columns={"PADRON": "PADRON_BAS"})
+  df = pd.merge(df_r, df_b, on=["CLAVE_ENTIDAD", "CLAVE_DISTRITO"])
+  df = df[df["PADRON_BAS"] > 0].copy()
+  df["DIF"] = df["PADRON_REC"] - df["PADRON_BAS"]
+  df["pct"] = df["DIF"] / df["PADRON_BAS"] * 100
+  return df
+
+def generar_graficos_nacional_pdf(corte, corte_base):
+  """Para ámbitos sin entidad: volumen y crecimiento del Padrón por entidad."""
+  try:
+    if not corte_base:
+      return None, None
+    c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
+    c_mp = col_dinamica("PE_SEX", ["MUJER", "PAD"], ["MUJER", "PE"])
+    c_nbp = col_dinamica("PE_SEX", ["BINARIO", "PAD"], ["NB", "PAD"], ["NO_BINARIO", "PAD"])
+    q = f"""
+        SELECT CLAVE_ENTIDAD,
+               SUM(COALESCE(CAST({c_hp} AS REAL),0) + COALESCE(CAST({c_mp} AS REAL),0) + COALESCE(CAST({c_nbp} AS REAL),0)) AS PADRON
+        FROM PE_SEX WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = ? AND CLAVE_ENTIDAD BETWEEN 1 AND 32
+        GROUP BY CLAVE_ENTIDAD
+    """
+    r = str(corte).strip().replace("-", "").replace("_", "")
+    b = str(corte_base).strip().replace("-", "").replace("_", "")
+    df_r = pd.read_sql_query(q, conn, params=[r]).rename(columns={"PADRON": "PADRON_REC"})
+    df_b = pd.read_sql_query(q, conn, params=[b]).rename(columns={"PADRON": "PADRON_BAS"})
+    df = pd.merge(df_r, df_b, on="CLAVE_ENTIDAD")
+    df = df[df["PADRON_BAS"] > 0].copy()
+    if df.empty:
+      return None, None
+    df["ENTIDAD"] = df["CLAVE_ENTIDAD"].apply(_ent_corto)
+    df["pct"] = (df["PADRON_REC"] - df["PADRON_BAS"]) / df["PADRON_BAS"] * 100
+
+    # 1. Volumen
+    d1 = df.sort_values("PADRON_REC", ascending=True)
+    prom1 = d1["PADRON_REC"].mean() / 1e6
+    fig, ax = plt.subplots(figsize=(5.0, 6.0))
+    barras = ax.barh(d1["ENTIDAD"], d1["PADRON_REC"] / 1e6, color="#3B82F6", height=0.7)
+    ax.bar_label(barras, labels=[f"{v/1e6:.2f} M" for v in d1["PADRON_REC"]], fontsize=6, padding=2)
+    ax.axvline(prom1, color="#F59E0B", linestyle="--", linewidth=1.2, label=f"Media: {prom1:.2f} M")
+    ax.margins(x=0.14)
+    ax.set_title("1. Volumen del Padrón Electoral por Entidad", fontsize=8.5, fontweight="bold", color="#4A2E7A")
+    ax.set_xlabel("Padrón Electoral (millones)", fontsize=7.5)
+    ax.tick_params(axis="x", labelsize=7)
+    ax.tick_params(axis="y", labelsize=6.5)
+    ax.legend(loc="lower right", fontsize=7)
+    fig.tight_layout()
+    buf_vol = BytesIO()
+    fig.savefig(buf_vol, format="png", dpi=200)
+    plt.close(fig)
+    buf_vol.seek(0)
+
+    # 2. Crecimiento
+    d2 = df.sort_values("pct", ascending=True)
+    prom2 = (df["PADRON_REC"].sum() - df["PADRON_BAS"].sum()) / df["PADRON_BAS"].sum() * 100
+    fig, ax = plt.subplots(figsize=(5.0, 6.0))
+    barras = ax.barh(d2["ENTIDAD"], d2["pct"], color="#64748B", height=0.7)
+    ax.bar_label(barras, labels=[f"{v:+.2f}%" for v in d2["pct"]], fontsize=6, padding=2)
+    ax.axvline(prom2, color="#F59E0B", linestyle="--", linewidth=1.2, label=f"Media: {prom2:+.2f}%")
+    ax.axvline(0, color="#334155", linewidth=0.6)
+    ax.margins(x=0.14)
+    ax.set_title("2. Ritmo de Crecimiento del Padrón (%) por Entidad", fontsize=8.5, fontweight="bold", color="#4A2E7A")
+    ax.set_xlabel("Variación Porcentual (%)", fontsize=7.5)
+    ax.tick_params(axis="x", labelsize=7)
+    ax.tick_params(axis="y", labelsize=6.5)
+    ax.legend(loc="lower right", fontsize=7)
+    fig.tight_layout()
+    buf_crec = BytesIO()
+    fig.savefig(buf_crec, format="png", dpi=200)
+    plt.close(fig)
+    buf_crec.seek(0)
+    return buf_vol, buf_crec
+  except Exception as e:
+    print(f"Error en generar_graficos_nacional_pdf: {e}")
+    return None, None
+
+def generar_grafico_top_incremento_neto(corte_rec, corte_bas):
+  """Top 10 de distritos por registros netos ganados (no por porcentaje)."""
+  try:
+    if not corte_bas:
+      return None
+    df = _comparar_distritos(corte_rec, corte_bas)
+    df_sub = df[df["DIF"] > 0].nlargest(10, "DIF").sort_values("DIF", ascending=True)
+    if df_sub.empty:
+      return None
+    etiquetas = [
+        f"{_ent_corto(e)} - D.{int(d)}"
+        for e, d in zip(df_sub["CLAVE_ENTIDAD"], df_sub["CLAVE_DISTRITO"])
+    ]
+    fig, ax = plt.subplots(figsize=(7.2, 2.25))
+    barras = ax.barh(etiquetas, df_sub["DIF"], color="#0EA5E9", height=0.65)
+    ax.bar_label(barras, labels=[f"{int(v):+,}" for v in df_sub["DIF"]], fontsize=7, padding=2)
+    ax.margins(x=0.12)
+    ax.set_title(
+        "Top 10 Distritos con Mayor Incremento Neto de Registros en el Padrón",
+        fontsize=9, fontweight="bold", color="#4A2E7A",
+    )
+    ax.set_xlabel("Registros netos adicionales en el Padrón", fontsize=8)
+    ax.tick_params(axis="x", labelsize=7.5)
+    ax.tick_params(axis="y", labelsize=7)
+    fig.tight_layout()
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=220)
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+  except Exception as e:
+    print(f"Error en generar_grafico_top_incremento_neto: {e}")
+  return None
+
+def generar_analisis_incremento_texto(corte_rec, corte_bas):
+  try:
+    if not corte_bas:
+      return ""
+    df = _comparar_distritos(corte_rec, corte_bas)
+    total = df["DIF"].sum()
+    top = df[df["DIF"] > 0].nlargest(10, "DIF")
+    if total <= 0 or top.empty:
+      return ""
+    suma = top["DIF"].sum()
+    por_ent = top.groupby("CLAVE_ENTIDAD").size().sort_values(ascending=False).head(3)
+    textos = [f"<b>{_ent_corto(e)}</b> ({n} distritos)" for e, n in por_ent.items()]
+    return (
+        "<b>Incremento Neto del Padrón (distritos federales, sin residentes en"
+        f" el extranjero):</b> el Padrón suma <b>{total:+,.0f}</b> registros"
+        f" netos entre los cortes comparados; los 10 distritos de mayor"
+        f" incremento aportan <b>{suma:,.0f}</b> ({suma/total*100:.1f}% del"
+        f" total). Entidades con más distritos en este grupo: {'; '.join(textos)}."
+    )
+  except Exception:
+    pass
+  return ""
+
 # ==============================================================================
 # REPORTE PDF EJECUTIVO
 # ==============================================================================
@@ -1666,25 +1849,26 @@ def generar_pdf_reporte(
       )
   )
 
-  img_vol = (
-      generar_grafico_volumen_pdf(corte_rec, cve_ent, cve_dist)
-      if cve_ent
-      else None
-  )
-  img_fc = generar_grafico_posicionamiento_pdf(
-      corte=corte_rec,
-      alcance_tipo=alcance_tipo,
-      cve_ent=cve_ent,
-      cve_dist=cve_dist,
-      modo_comp=bool(corte_bas),
-      corte_base_comp=corte_bas,
-  )
+  if cve_ent:
+    img_vol = generar_grafico_volumen_pdf(corte_rec, cve_ent, cve_dist)
+    img_fc = generar_grafico_posicionamiento_pdf(
+        corte=corte_rec,
+        alcance_tipo=alcance_tipo,
+        cve_ent=cve_ent,
+        cve_dist=cve_dist,
+        modo_comp=bool(corte_bas),
+        corte_base_comp=corte_bas,
+    )
+    alto_duo = 130
+  else:
+    img_vol, img_fc = generar_graficos_nacional_pdf(corte_rec, corte_bas)
+    alto_duo = 318
 
   if img_vol and img_fc:
     t_duo = Table(
         [[
-            Image(img_vol, width=265, height=130),
-            Image(img_fc, width=265, height=130),
+            Image(img_vol, width=265, height=alto_duo),
+            Image(img_fc, width=265, height=alto_duo),
         ]],
         colWidths=[268, 268],
     )
@@ -1701,7 +1885,7 @@ def generar_pdf_reporte(
     story.append(t_duo)
     story.append(Spacer(1, 4))
   elif img_fc:
-    t_single = Table([[Image(img_fc, width=440, height=130)]], colWidths=[536])
+    t_single = Table([[Image(img_fc, width=440, height=alto_duo)]], colWidths=[536])
     t_single.setStyle(
         TableStyle([
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
@@ -1773,6 +1957,15 @@ def generar_pdf_reporte(
     txt_diag_rapidos = generar_analisis_positivo_texto(corte_rec, corte_bas)
     if txt_diag_rapidos:
       story.append(Paragraph(txt_diag_rapidos, body_style))
+      story.append(Spacer(1, 3))
+
+    img_inc = generar_grafico_top_incremento_neto(corte_rec, corte_bas)
+    if img_inc:
+      agregar_imagen_centrada(img_inc, 450, 140)
+
+    txt_inc = generar_analisis_incremento_texto(corte_rec, corte_bas)
+    if txt_inc:
+      story.append(Paragraph(txt_inc, body_style))
       story.append(Spacer(1, 3))
 
   story.append(Spacer(1, 4))
@@ -2191,7 +2384,7 @@ with tab_origen:
             c_pfor = col_dinamica(target_eo, ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"], ["FORANEO"], exclude=["LIS", "LNE"])
             c_lfor = col_dinamica(target_eo, ["FORANEO", "LIS"], ["FORANEO", "LNE"], ["FOR", "LIS"], ["FORANEO"], exclude=["PAD", "PE"])
             c_p87 = col_dinamica(target_eo, ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"], ["HIJO"], ["87"], exclude=["LIS", "LNE", "88", "NATURALIZADO"])
-            c_l87 = col_dinamica(target_eo, ["HIJO", "LIS"], ["HIJO", "LNE"], ["MEXICANO", "LIS"], ["HIJO"], ["87"], exclude=["PAD", "PE", "88", "NATURALIZADO"])
+            c_l87 = col_dinamica(target_eo, ["HIJO", "LIS"], ["HIJO", "LNE"], ["MEXICANO", "LIS"], ["HIJO"], ["87"], exclude=["PADRON", "PE_", "88", "NATURALIZADO"])
             c_p88 = col_dinamica(target_eo, ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"], ["NATURALIZADO"], ["88"], exclude=["LIS", "LNE", "87", "HIJO"])
             c_l88 = col_dinamica(target_eo, ["NATURALIZADO", "LIS"], ["NATURALIZADO", "LNE"], ["88", "LIS"], ["NATURALIZADO"], ["88"], exclude=["PAD", "PE", "87", "HIJO"])
 
@@ -2325,26 +2518,45 @@ dem_dict = {
     "n88_p": p_88_1,
     "n87_p": p_87_1,
 }
-desc_texto = f"Corte Reciente: {formatear_corte(corte_reciente)}"
-if modo == "Comparar con Periodo Previo" and corte_base:
-  desc_texto += f" frente a Base: {formatear_corte(corte_base)}"
-
 if st.sidebar.button("📥 Generar Reporte PDF"):
   try:
     with st.spinner("Compilando reporte gráfico ejecutivo..."):
+      comparando = (modo == "Comparar con Periodo Previo") and bool(corte_base)
+      # El reporte siempre compara contra un corte base (PEF_2024 por defecto)
+      # para poder mostrar crecimiento y diagnóstico distrital.
+      if comparando:
+        corte_base_pdf = corte_base
+        p2_pdf, l2_pdf, cob2_pdf = p2, l2, cob2
+      else:
+        if "PEF_2024" in cortes_lista and corte_reciente != "PEF_2024":
+          corte_base_pdf = "PEF_2024"
+        else:
+          otros = [c for c in cortes_lista if c != corte_reciente]
+          corte_base_pdf = otros[0] if otros else None
+        p2_pdf, l2_pdf, cob2_pdf = p1, l1, cob1
+        if corte_base_pdf:
+          df_pdf2 = consultar_datos_agregados_seguro(corte_base_pdf, sql_filtro_geo)
+          p2_pdf = int(df_pdf2["padron"].iloc[0] or 0)
+          l2_pdf = int(df_pdf2["lista"].iloc[0] or 0)
+          cob2_pdf = (l2_pdf / p2_pdf * 100) if p2_pdf > 0 else 0
+
+      desc_texto = f"Corte Reciente: {formatear_corte(corte_reciente)}"
+      if corte_base_pdf:
+        desc_texto += f" frente a Base: {formatear_corte(corte_base_pdf)}"
+
       pdf_file = generar_pdf_reporte(
           titulo_alcance=nombre_header,
           desc_cortes=desc_texto,
           p1=p1,
-          p2=p2,
+          p2=p2_pdf,
           l1=l1,
-          l2=l2,
+          l2=l2_pdf,
           cob1=cob1,
-          cob2=cob2,
+          cob2=cob2_pdf,
           g_data=g_dict,
           dem_data=dem_dict,
           corte_rec=corte_reciente,
-          corte_bas=corte_base if modo == "Comparar con Periodo Previo" else None,
+          corte_bas=corte_base_pdf,
           cve_ent=cve_entidad_activa,
           cve_dist=cve_distrito_activo,
           alcance_tipo=alcance,
