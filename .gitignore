@@ -7,4 +7,6 @@ Por entidad de origen/
 Por sexo/
 .streamlit/
 __pycache__/
-*.pyc
+*.pycinsumos_originales/
+respaldos_seguros/
+*.db
