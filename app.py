@@ -198,7 +198,7 @@ def formatear_corte(corte_str):
     v = str(corte_str).strip()
     if len(v) == 8 and v.isdigit():
         return f"{v[:4]}-{v[4:6]}-{v[6:]}"
-    return v
+    return v.replace("_", " ")
 def col_dinamica(tabla, *criterios_lista, exclude=None, default="__primera__"):
     if exclude is None:
         exclude = []
@@ -2241,6 +2241,32 @@ else:
     k1.metric("Padrón Electoral", f"{p1:,}")
     k2.metric("Lista Nominal", f"{l1:,}")
     k3.metric("Cobertura Registral", f"{cob1:.2f}%")
+
+# ------------------------------------------------------------------------------
+# TARJETAS FIJAS: CRECIMIENTO DESDE EL PEF 2024 (referencia del último proceso electoral)
+# ------------------------------------------------------------------------------
+BASE_PEF = "PEF_2024"
+_ya_compara_pef = (modo == "Comparar con Periodo Previo") and (corte_base == BASE_PEF)
+if BASE_PEF in cortes_lista and corte_reciente != BASE_PEF and not _ya_compara_pef:
+    st.markdown("---")
+    st.markdown("#### Crecimiento desde el PEF 2024")
+    df_pef = consultar_datos_agregados_seguro(BASE_PEF, sql_filtro_geo)
+    p_pef = int(df_pef["padron"].iloc[0] or 0)
+    l_pef = int(df_pef["lista"].iloc[0] or 0)
+    if p_pef > 0 and l_pef > 0:
+        cob_pef = l_pef / p_pef * 100
+        dif_p_pef = p1 - p_pef
+        dif_l_pef = l1 - l_pef
+        pct_p_pef = dif_p_pef / p_pef * 100
+        pct_l_pef = dif_l_pef / l_pef * 100
+        dif_cob_pef = cob1 - cob_pef
+        q1, q2, q3 = st.columns(3)
+        q1.metric("Padrón: variación", f"{dif_p_pef:+,}", f"{pct_p_pef:+.2f}%")
+        q2.metric("Lista Nominal: variación", f"{dif_l_pef:+,}", f"{pct_l_pef:+.2f}%")
+        q3.metric("Cobertura: cambio", f"{dif_cob_pef:+.2f} pts", f"{cob1:.2f}% vs {cob_pef:.2f}%", delta_color="off")
+        st.caption(f"Base: {formatear_corte(BASE_PEF)} · Corte actual: {formatear_corte(corte_reciente)}")
+    else:
+        st.caption("Sin datos comparables en el PEF 2024 para este ámbito geográfico.")
 
 st.markdown("---")
 st.markdown("#### Desglose por Género (Emparejado al 100% con el Padrón)")
