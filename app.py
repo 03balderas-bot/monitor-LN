@@ -538,11 +538,107 @@ def renderizar_grafica_posicionamiento(
           height=max(340, len(df_comp) * 32),
       )
 
+      c_nat = col_dinamica("PE_EO", ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"], ["NATIVO"], exclude=["LIS", "LNE"])
+      c_for = col_dinamica("PE_EO", ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"], ["FORANEO"], exclude=["LIS", "LNE"])
+      c_87 = col_dinamica("PE_EO", ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"], ["HIJO"], ["MEXICANO"], ["87"], exclude=["LIS", "LNE", "88", "NATURALIZADO"])
+      c_88 = col_dinamica("PE_EO", ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"], ["NATURALIZADO"], ["88"], exclude=["LIS", "LNE", "87", "HIJO", "MEXICANO"])
+
+      q_eo_comp = f"""
+                SELECT TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) AS CORTE_LIMPIO,
+                       CLAVE_DISTRITO,
+                       SUM(CAST({c_nat} AS REAL)) AS NATIVO,
+                       SUM(CAST({c_for} AS REAL)) AS FORANEO,
+                       SUM(CAST({c_87} AS REAL)) AS C87,
+                       SUM(CAST({c_88} AS REAL)) AS C88
+                FROM PE_EO
+                WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', ''))
+                          IN ('{corte_limpio}', '{corte_base_limpio}')
+                  AND CLAVE_ENTIDAD = {cve_ent}
+                  AND CLAVE_DISTRITO != 0
+                GROUP BY CORTE_LIMPIO, CLAVE_DISTRITO
+            """
+      df_eo_comp = pd.read_sql_query(q_eo_comp, conn)
+      eo_rec = df_eo_comp[df_eo_comp["CORTE_LIMPIO"] == corte_limpio].set_index("CLAVE_DISTRITO")
+      eo_bas = df_eo_comp[df_eo_comp["CORTE_LIMPIO"] == corte_base_limpio].set_index("CLAVE_DISTRITO")
+
+      df_origen = df_comp[["CLAVE_DISTRITO", "ETIQUETA", "DIF_ABS"]].copy()
+      for col in ("NATIVO", "FORANEO", "C87", "C88"):
+          df_origen[col] = (
+              df_origen["CLAVE_DISTRITO"].map(eo_rec[col]).fillna(0)
+              - df_origen["CLAVE_DISTRITO"].map(eo_bas[col]).fillna(0)
+          )
+
+      def _hover_comp(v, total):
+          if total > 0:
+              return f"{v:+,.0f} ({v / total * 100:.0f}% del crecimiento)"
+          return f"{v:+,.0f}"
+
+      df_origen["H_TOTAL"] = df_origen["DIF_ABS"].map(lambda v: f"{v:+,.0f} personas netas")
+      for col in ("NATIVO", "FORANEO", "C87", "C88"):
+          df_origen[f"H_{col}"] = df_origen.apply(
+              lambda r: _hover_comp(r[col], r["DIF_ABS"]), axis=1
+          )
+
+      componentes = [
+          ("NATIVO", "Nativos", "#3B82F6"),
+          ("FORANEO", "Foráneos", "#F59E0B"),
+          ("C87", "Clave 87 (hijos de padres mexicanos)", "#10B981"),
+          ("C88", "Clave 88 (naturalizados)", "#A855F7"),
+      ]
+
+      fig_origen = go.Figure()
+      for col, nombre, color in componentes:
+          fig_origen.add_trace(
+              go.Bar(
+                  y=df_origen["ETIQUETA"],
+                  x=df_origen[col],
+                  orientation="h",
+                  name=nombre,
+                  marker=dict(color=color, line=dict(width=0)),
+                  text=[
+                      f"{v:+,.0f}" if abs(v) >= 300 else ""
+                      for v in df_origen[col]
+                  ],
+                  textposition="inside",
+                  insidetextanchor="middle",
+                  textfont=dict(color="#FFFFFF", size=9),
+                  hovertemplate=(
+                      "<b>%{y}</b><br>%{customdata[0]}<br>Total distrito:"
+                      " %{customdata[1]}<extra></extra>"
+                  ),
+                  customdata=df_origen[[f"H_{col}", "H_TOTAL"]].values,
+              )
+          )
+      subtitulo_origen = (
+          f"<b>3. Origen del Crecimiento del Padrón en {nom_entidad}</b>"
+          "<br><sup>Variación neta por componente entre"
+          f" {formatear_corte(corte_base_comp)} y {formatear_corte(corte)}</sup>"
+      )
+      fig_origen.update_layout(
+          barmode="stack",
+          title=dict(text=subtitulo_origen, font=dict(size=13, color="#E2E8F0")),
+          xaxis=dict(
+              title="Variación Neta de Personas",
+              showgrid=True,
+              gridcolor="#334155",
+              zeroline=True,
+              zerolinecolor="#64748B",
+          ),
+          yaxis=dict(showgrid=False, tickfont=dict(size=10.5)),
+          plot_bgcolor="rgba(0,0,0,0)",
+          paper_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#94A3B8"),
+          legend=dict(font=dict(size=10), orientation="h", y=-0.1),
+          margin=dict(l=20, r=20, t=55, b=45),
+          height=max(380, len(df_origen) * 36),
+      )
+
       col_v1, col_v2 = st.columns(2)
       with col_v1:
         st.plotly_chart(fig_vol, width="stretch")
       with col_v2:
         st.plotly_chart(fig_crec, width="stretch")
+      st.plotly_chart(fig_origen, width="stretch")
     else:
       q_cob = f"""
                 SELECT CLAVE_DISTRITO,
