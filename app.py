@@ -1396,6 +1396,73 @@ def generar_grafico_top_extranjero(corte):
     print(f"Error en generar_grafico_top_extranjero: {e}")
   return None
 
+def generar_grafico_top_clave87(corte):
+  try:
+    c_p87 = col_dinamica("PE_EO", ["HIJO", "PAD"], ["HIJO", "PE"], ["MEXICANO", "PAD"])
+    c_pnat = col_dinamica("PE_EO", ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"])
+    c_pfor = col_dinamica("PE_EO", ["FORANEO", "PAD"], ["FORANEO", "PE"], ["FOR", "PAD"])
+    c_p88 = col_dinamica(
+        "PE_EO", ["NATURALIZADO", "PAD"], ["NATURALIZADO", "PE"], ["88", "PAD"]
+    )
+
+    corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
+    q = f"""
+            SELECT CLAVE_ENTIDAD,
+                   SUM(CAST(COALESCE({c_p87},0) AS REAL)) AS personas_87,
+                   SUM(CAST(COALESCE({c_pnat},0) + COALESCE({c_pfor},0) + COALESCE({c_p88},0) + COALESCE({c_p87},0) AS REAL)) AS padron_total
+            FROM PE_EO WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = ?
+            GROUP BY CLAVE_ENTIDAD ORDER BY personas_87 DESC LIMIT 10
+        """
+    df = pd.read_sql_query(q, conn, params=[corte_limpio])
+    if df.empty:
+      return None
+
+    df["pct"] = (
+        df["personas_87"]
+        * 100.0
+        / df["padron_total"].where(df["padron_total"] != 0)
+    ).fillna(0.0)
+    df = df.sort_values(by="personas_87", ascending=True)
+    df["ENTIDAD"] = (
+        df["CLAVE_ENTIDAD"]
+        .map(CATALOGO_ENTIDADES)
+        .str.replace(" de Ocampo", "", regex=False)
+    )
+
+    plt.figure(figsize=(6.8, 2.2))
+    barras = plt.barh(df["ENTIDAD"], df["personas_87"], color="#8C62B6")
+    plt.title(
+        "Top 10 Entidades: Personas con Clave 87 (hijos de padres"
+        f" mexicanos) - {formatear_corte(corte)}",
+        fontsize=8.5,
+        fontweight="bold",
+        color="#4A2E7A",
+    )
+    plt.xlabel("Personas con Clave 87 en el Padrón", fontsize=8)
+    plt.xlim(0, df["personas_87"].max() * 1.55)
+    for barra, val, pct in zip(barras, df["personas_87"], df["pct"]):
+      plt.text(
+          barra.get_width(),
+          barra.get_y() + barra.get_height() / 2,
+          f"  {int(val):,}  ({pct:.2f}% del padrón estatal)",
+          va="center",
+          ha="left",
+          fontsize=6.5,
+          color="#334155",
+      )
+    plt.xticks(fontsize=7.5)
+    plt.yticks(fontsize=7.5)
+    plt.tight_layout()
+
+    buf = BytesIO()
+    plt.savefig(buf, format="png", dpi=220)
+    plt.close()
+    buf.seek(0)
+    return buf
+  except Exception as e:
+    print(f"Error en generar_grafico_top_clave87: {e}")
+  return None
+
 def generar_grafico_distritos_foraneos(corte):
   try:
     c_pnat = col_dinamica("PE_EO", ["NATIVO", "PAD"], ["NATIVO", "PE"], ["NAT", "PAD"])
@@ -2059,6 +2126,9 @@ def generar_pdf_reporte(
   if txt_for:
     story.append(Paragraph(txt_for, body_style))
     story.append(Spacer(1, 3))
+
+  img_c87 = generar_grafico_top_clave87(corte_rec)
+  agregar_imagen_centrada(img_c87, 430, 115)
 
   if corte_bas:
     story.append(PageBreak())
