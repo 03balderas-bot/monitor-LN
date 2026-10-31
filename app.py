@@ -638,6 +638,14 @@ def renderizar_grafica_posicionamiento(
         st.plotly_chart(fig_vol, width="stretch")
       with col_v2:
         st.plotly_chart(fig_crec, width="stretch")
+        st.caption(
+            "Los porcentajes se calculan sobre la base de cada distrito, así que no se"
+            " promedian entre sí. Cuando un municipio se reparte entre varios distritos"
+            " (Acapulco en D02 y D04; Puebla en D06, D07, D09, D11 y D12; Juárez en D01 a"
+            " D04), el dato municipal es la suma ponderada de sus partes, no el promedio de"
+            " los porcentajes. Con la distritación vigente hay 76 municipios del país en"
+            " esa situación."
+        )
       st.plotly_chart(fig_origen, width="stretch")
     else:
       q_cob = f"""
