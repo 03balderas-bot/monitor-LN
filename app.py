@@ -2427,6 +2427,231 @@ else:
         st.metric("Lista Nominal No Binarios", f"{nb_lista_1:,}")
         st.text(f"Cobertura: {nbcob_1:.2f}%")
 
+def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
+  corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
+  padron_expr = (
+      "COALESCE(SUM(PADRON_NATIVO),0)+COALESCE(SUM(PADRON_FORANEO),0)"
+      "+COALESCE(SUM(PADRON_HIJO_DE_PADRES_MEXICANOS),0)"
+      "+COALESCE(SUM(PADRON_NATURALIZADO),0)"
+  )
+
+  def _consulta(where_extra, grupo):
+      q = f"""
+              SELECT {grupo} AS CLAVE,
+                     {padron_expr} AS PADRON,
+                     COALESCE(SUM(PADRON_HIJO_DE_PADRES_MEXICANOS), 0) AS C87,
+                     COALESCE(SUM(PADRON_NATURALIZADO), 0) AS C88
+              FROM PE_EO
+              WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = ? {where_extra}
+              GROUP BY {grupo}
+          """
+      return pd.read_sql_query(q, conn, params=[corte_limpio])
+
+  def _preparar(df, etiquetas, ordenar=True):
+      df = df.copy()
+      df["PCT87"] = (df["C87"] / df["PADRON"].replace(0, pd.NA) * 100).fillna(0).astype(float)
+      df["PCT88"] = (df["C88"] / df["PADRON"].replace(0, pd.NA) * 100).fillna(0).astype(float)
+      df["PCT_SUM"] = df["PCT87"] + df["PCT88"]
+      df["LABEL"] = etiquetas
+      df["H87"] = df.apply(lambda r: f"{int(r['C87']):,} · {r['PCT87']:.2f}% del padrón", axis=1)
+      df["H88"] = df.apply(lambda r: f"{int(r['C88']):,} · {r['PCT88']:.2f}% del padrón", axis=1)
+      df["HTOT"] = df.apply(
+          lambda r: f"{r['PCT_SUM']:.2f}% · {int(r['C87'] + r['C88']):,} personas", axis=1
+      )
+      if ordenar:
+          df = df.sort_values("PCT_SUM", ascending=True).reset_index(drop=True)
+      else:
+          df = df.reset_index(drop=True)
+      umbral = max(df["PCT_SUM"].max() * 0.05, 0.02)
+      df["T87"] = [f"{v:.2f}%" if v >= umbral else "" for v in df["PCT87"]]
+      df["T88"] = [f"{v:.2f}%" if v >= umbral else "" for v in df["PCT88"]]
+      return df
+
+  def _fig(df, titulo, promedio=None, alto=380):
+      fig = go.Figure()
+      for col, txt, color, nombre in (
+          ("PCT87", "T87", "#38BDF8", "Clave 87 (nacidos en el extranjero, hijos de padres mexicanos)"),
+          ("PCT88", "T88", "#A855F7", "Clave 88 (naturalizados)"),
+      ):
+          fig.add_trace(
+              go.Bar(
+                  y=df["LABEL"],
+                  x=df[col],
+                  orientation="h",
+                  name=nombre,
+                  marker=dict(color=color, line=dict(width=0)),
+                  text=df[txt],
+                  textposition="inside",
+                  insidetextanchor="middle",
+                  textfont=dict(color="#FFFFFF", size=9),
+                  hovertemplate=(
+                      "<b>%{y}</b><br>87: %{customdata[0]}<br>88: %{customdata[1]}"
+                      "<br>Combinado: %{customdata[2]}<extra></extra>"
+                  ),
+                  customdata=df[["H87", "H88", "HTOT"]].values,
+              )
+          )
+      if promedio is not None:
+          fig.add_vline(
+              x=promedio,
+              line_width=1.5,
+              line_dash="dash",
+              line_color="#F59E0B",
+              annotation_text=f"Media: {promedio:.2f}%",
+              annotation_position="bottom right",
+              annotation_font=dict(size=10, color="#F59E0B"),
+          )
+      fig.update_layout(
+          barmode="stack",
+          title=dict(text=titulo, font=dict(size=13, color="#E2E8F0")),
+          xaxis=dict(
+              title="% del Padrón Electoral",
+              showgrid=True,
+              gridcolor="#334155",
+              zeroline=False,
+          ),
+          yaxis=dict(showgrid=False, tickfont=dict(size=9.5 if len(df) > 12 else 10.5)),
+          plot_bgcolor="rgba(0,0,0,0)",
+          paper_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#94A3B8"),
+          legend=dict(font=dict(size=10), orientation="h", y=-0.08),
+          margin=dict(l=20, r=50, t=55, b=45),
+          height=max(alto, len(df) * 26),
+          annotations=[
+              dict(
+                  x=r.PCT_SUM,
+                  y=r.LABEL,
+                  text=f"  {r.PCT_SUM:.2f}%",
+                  showarrow=False,
+                  xanchor="left",
+                  font=dict(size=9, color="#94A3B8"),
+              )
+              for r in df.itertuples()
+          ],
+      )
+      return fig
+
+  nota = (
+      "Clave 87: mexicanos nacidos en el extranjero, hijos de padre o madre mexicanos."
+      " Clave 88: mexicanos naturalizados. El archivo sí trae ambas claves (columnas"
+      " PAD87 y PAD88) y son las que alimentan esta gráfica. Lo que no trae es su"
+      " cruce con la entidad de origen: las 32 columnas PAD_<ENTIDAD> suman"
+      " exactamente la población nativa + foránea, y 87 y 88 se contabilizan aparte"
+      " (solo al sumarlas se llega al total del Padrón). Por eso un registro 87 u 88"
+      " no se puede atribuir a una entidad federativa de origen: solo se conoce la"
+      " entidad y el distrito donde está registrado."
+  )
+
+  try:
+      if "Solo Residentes" in str(alcance_tipo) and not cve_ent:
+          st.info(
+              "Este análisis aplica al territorio nacional o a una entidad."
+              " Cambia el ámbito geográfico para verlo."
+          )
+          return
+
+      if cve_ent and cve_dist:
+          nom = CATALOGO_ENTIDADES.get(int(cve_ent), f"Entidad {int(cve_ent)}")
+          df_d = _consulta(
+              f"AND CLAVE_ENTIDAD = {int(cve_ent)} AND CLAVE_DISTRITO = {int(cve_dist)}",
+              "CLAVE_DISTRITO",
+          )
+          df_e = _consulta(
+              f"AND CLAVE_ENTIDAD = {int(cve_ent)} AND CLAVE_DISTRITO != 0",
+              "CLAVE_DISTRITO",
+          )
+          df_n = _consulta("AND CLAVE_ENTIDAD BETWEEN 1 AND 32", "CLAVE_ENTIDAD")
+          if df_d.empty:
+              st.info("No hay datos de origen para ese distrito en el corte seleccionado.")
+              return
+
+          fila = df_d.iloc[0]
+          c87, c88, pad = int(fila["C87"]), int(fila["C88"]), int(fila["PADRON"])
+          pct87 = c87 / pad * 100 if pad else 0.0
+          pct88 = c88 / pad * 100 if pad else 0.0
+
+          m1, m2, m3 = st.columns(3)
+          m1.metric("Padrón del distrito", f"{pad:,}")
+          m2.metric("Clave 87", f"{c87:,}", f"{pct87:.2f}% del padrón")
+          m3.metric("Clave 88", f"{c88:,}", f"{pct88:.2f}% del padrón")
+
+          def _fila_agregada(df, etiqueta):
+              p = df["PADRON"].sum()
+              a = df["C87"].sum()
+              b = df["C88"].sum()
+              return {
+                  "LABEL": etiqueta,
+                  "PADRON": p,
+                  "C87": a,
+                  "C88": b,
+              }
+
+          df_cmp = pd.DataFrame([
+              {"LABEL": f"Distrito {int(cve_dist):02d}", "PADRON": pad, "C87": c87, "C88": c88},
+              _fila_agregada(df_e, f"Promedio de {nom}"),
+              _fila_agregada(df_n, "Promedio nacional"),
+          ])
+          df_cmp = _preparar(df_cmp, df_cmp["LABEL"].tolist(), ordenar=False)
+          fig = _fig(
+              df_cmp,
+              f"<b>Claves 87 y 88 en el Distrito {int(cve_dist):02d} de {nom}</b>"
+              f"<br><sup>Corte {formatear_corte(corte)} · comparación con promedios</sup>",
+              alto=340,
+          )
+          st.plotly_chart(fig, width="stretch")
+          st.caption(nota)
+          return
+
+      if cve_ent:
+          nom = CATALOGO_ENTIDADES.get(int(cve_ent), f"Entidad {int(cve_ent)}")
+          df = _consulta(
+              f"AND CLAVE_ENTIDAD = {int(cve_ent)} AND CLAVE_DISTRITO != 0",
+              "CLAVE_DISTRITO",
+          )
+          if df.empty:
+              st.info("No hay datos de origen para esa entidad en el corte seleccionado.")
+              return
+          df = _preparar(df, [f"Dist. {int(v):02d}" for v in df["CLAVE"]])
+          prom = (
+              (df["C87"].sum() + df["C88"].sum()) / df["PADRON"].sum() * 100
+              if df["PADRON"].sum() else 0.0
+          )
+          fig = _fig(
+              df,
+              f"<b>Claves 87 y 88 como % del Padrón por distrito — {nom}</b>"
+              f"<br><sup>Corte {formatear_corte(corte)} · ordenado por porcentaje combinado</sup>",
+              promedio=prom,
+              alto=360,
+          )
+          st.plotly_chart(fig, width="stretch")
+          st.caption(nota)
+          return
+
+      df = _consulta("AND CLAVE_ENTIDAD BETWEEN 1 AND 32", "CLAVE_ENTIDAD")
+      if df.empty:
+          st.info("No hay datos de origen para el corte seleccionado.")
+          return
+      df = _preparar(
+          df,
+          [CATALOGO_ENTIDADES.get(int(v), f"Entidad {int(v)}") for v in df["CLAVE"]],
+      )
+      prom = (
+          (df["C87"].sum() + df["C88"].sum()) / df["PADRON"].sum() * 100
+          if df["PADRON"].sum() else 0.0
+      )
+      fig = _fig(
+          df,
+          "<b>Claves 87 y 88 como % del Padrón por entidad</b>"
+          f"<br><sup>Corte {formatear_corte(corte)} · ordenado por porcentaje combinado</sup>",
+          promedio=prom,
+          alto=420,
+      )
+      st.plotly_chart(fig, width="stretch")
+      st.caption(nota)
+  except Exception as e:
+      st.warning(f"No se pudo construir el análisis de claves 87/88: {e}")
+
+
 if "Nacional" in alcance or cve_entidad_activa:
     st.markdown("---")
     with st.expander("📍 Posicionamiento y Contexto Geográfico Comparativo", expanded=True):
@@ -2437,6 +2662,13 @@ if "Nacional" in alcance or cve_entidad_activa:
             cve_dist=cve_distrito_activo,
             modo_comp=(modo == "Comparar con Periodo Previo"),
             corte_base_comp=corte_base,
+        )
+    with st.expander("🕵️ Claves 87 y 88: proporción del Padrón (Nacional / Entidad / Distrito)", expanded=False):
+        renderizar_origen_8788(
+            corte=corte_reciente,
+            alcance_tipo=alcance,
+            cve_ent=cve_entidad_activa,
+            cve_dist=cve_distrito_activo,
         )
 
 st.markdown("---")
