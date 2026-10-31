@@ -360,7 +360,13 @@ def consultar_datos_mayores_seguro(corte, condicion_where):
         return 0, 0
    
 def renderizar_grafica_posicionamiento(
-    corte, alcance_tipo, cve_ent, cve_dist, modo_comp=False, corte_base_comp=None
+    corte,
+    alcance_tipo,
+    cve_ent,
+    cve_dist,
+    modo_comp=False,
+    corte_base_comp=None,
+    devolver_origen=False,
 ):
   corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
   c_hp = col_dinamica("PE_SEX", ["HOMBRE", "PAD"], ["HOMBRE", "PE"])
@@ -616,7 +622,16 @@ def renderizar_grafica_posicionamiento(
       )
       fig_origen.update_layout(
           barmode="stack",
-          title=dict(text=subtitulo_origen, font=dict(size=13, color="#E2E8F0")),
+          title=dict(
+              text=subtitulo_origen,
+              font=dict(size=13, color="#E2E8F0"),
+              x=0,
+              xanchor="left",
+              y=1,
+              yref="container",
+              yanchor="top",
+              pad=dict(t=12),
+          ),
           xaxis=dict(
               title="Variación Neta de Personas",
               showgrid=True,
@@ -628,9 +643,16 @@ def renderizar_grafica_posicionamiento(
           plot_bgcolor="rgba(0,0,0,0)",
           paper_bgcolor="rgba(0,0,0,0)",
           font=dict(color="#94A3B8"),
-          legend=dict(font=dict(size=10), orientation="h", y=-0.1),
-          margin=dict(l=20, r=20, t=55, b=45),
-          height=max(380, len(df_origen) * 36),
+          legend=dict(
+              font=dict(size=10),
+              orientation="h",
+              y=1.0,
+              yanchor="bottom",
+              x=0,
+              xanchor="left",
+          ),
+          margin=dict(l=20, r=20, t=160, b=45),
+          height=max(440, len(df_origen) * 36 + 40),
       )
 
       col_v1, col_v2 = st.columns(2)
@@ -646,6 +668,8 @@ def renderizar_grafica_posicionamiento(
             " los porcentajes. Con la distritación vigente hay 76 municipios del país en"
             " esa situación."
         )
+      if devolver_origen:
+        return fig_origen
       st.plotly_chart(fig_origen, width="stretch")
     else:
       q_cob = f"""
@@ -2435,7 +2459,7 @@ else:
         st.metric("Lista Nominal No Binarios", f"{nb_lista_1:,}")
         st.text(f"Cobertura: {nbcob_1:.2f}%")
 
-def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
+def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None, corte_base=None):
   corte_limpio = str(corte).strip().replace("-", "").replace("_", "")
   padron_expr = (
       "COALESCE(SUM(PADRON_NATIVO),0)+COALESCE(SUM(PADRON_FORANEO),0)"
@@ -2443,7 +2467,12 @@ def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
       "+COALESCE(SUM(PADRON_NATURALIZADO),0)"
   )
 
-  def _consulta(where_extra, grupo):
+  def _consulta(where_extra, grupo, corte_val=None):
+      corte_txt = (
+          corte_limpio
+          if corte_val is None
+          else str(corte_val).strip().replace("-", "").replace("_", "")
+      )
       q = f"""
               SELECT {grupo} AS CLAVE,
                      {padron_expr} AS PADRON,
@@ -2453,7 +2482,7 @@ def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
               WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = ? {where_extra}
               GROUP BY {grupo}
           """
-      return pd.read_sql_query(q, conn, params=[corte_limpio])
+      return pd.read_sql_query(q, conn, params=[corte_txt])
 
   def _preparar(df, etiquetas, ordenar=True):
       df = df.copy()
@@ -2478,7 +2507,7 @@ def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
   def _fig(df, titulo, promedio=None, alto=380):
       fig = go.Figure()
       for col, txt, color, nombre in (
-          ("PCT87", "T87", "#38BDF8", "Clave 87 (nacidos en el extranjero, hijos de padres mexicanos)"),
+          ("PCT87", "T87", "#38BDF8", "Clave 87 (hijos de padres mexicanos)"),
           ("PCT88", "T88", "#A855F7", "Clave 88 (naturalizados)"),
       ):
           fig.add_trace(
@@ -2511,7 +2540,16 @@ def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
           )
       fig.update_layout(
           barmode="stack",
-          title=dict(text=titulo, font=dict(size=13, color="#E2E8F0")),
+          title=dict(
+              text=titulo,
+              font=dict(size=13, color="#E2E8F0"),
+              x=0,
+              xanchor="left",
+              y=1,
+              yref="container",
+              yanchor="top",
+              pad=dict(t=12),
+          ),
           xaxis=dict(
               title="% del Padrón Electoral",
               showgrid=True,
@@ -2522,9 +2560,16 @@ def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
           plot_bgcolor="rgba(0,0,0,0)",
           paper_bgcolor="rgba(0,0,0,0)",
           font=dict(color="#94A3B8"),
-          legend=dict(font=dict(size=10), orientation="h", y=-0.08),
-          margin=dict(l=20, r=50, t=55, b=45),
-          height=max(alto, len(df) * 26),
+          legend=dict(
+              font=dict(size=10),
+              orientation="h",
+              y=1.0,
+              yanchor="bottom",
+              x=0,
+              xanchor="left",
+          ),
+          margin=dict(l=20, r=50, t=130, b=45),
+          height=max(alto + 40, len(df) * 26 + 40),
           annotations=[
               dict(
                   x=r.PCT_SUM,
@@ -2536,6 +2581,64 @@ def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
               )
               for r in df.itertuples()
           ],
+      )
+      return fig
+
+  def _fig_delta(df_rec, df_bas, titulo, etiquetas, alto=340):
+      a = df_rec[["CLAVE", "PADRON", "C87", "C88"]].copy()
+      b = df_bas[["CLAVE", "PADRON", "C87", "C88"]].copy()
+      m = a.merge(b, on="CLAVE", how="outer", suffixes=("_REC", "_BAS")).fillna(0)
+      m["LABEL"] = m["CLAVE"].map(etiquetas).fillna(m["CLAVE"].astype(str))
+      m["PCT_REC"] = (
+          (m["C87_REC"] + m["C88_REC"]) / m["PADRON_REC"].replace(0, pd.NA) * 100
+      )
+      m["PCT_BAS"] = (
+          (m["C87_BAS"] + m["C88_BAS"]) / m["PADRON_BAS"].replace(0, pd.NA) * 100
+      )
+      m = m.fillna({"PCT_REC": 0.0, "PCT_BAS": 0.0})
+      m["DELTA_PP"] = m["PCT_REC"] - m["PCT_BAS"]
+      m["DELTA_PERS"] = (m["C87_REC"] + m["C88_REC"]) - (m["C87_BAS"] + m["C88_BAS"])
+      m["HOVER"] = m.apply(
+          lambda r: (
+              f"87+88: {r['PCT_REC']:.2f}% ahora vs {r['PCT_BAS']:.2f}% antes"
+              f" · {int(r['DELTA_PERS']):+,} personas"
+          ),
+          axis=1,
+      )
+      m = m.sort_values("DELTA_PP", ascending=True).reset_index(drop=True)
+      fig = go.Figure()
+      fig.add_trace(
+          go.Bar(
+              y=m["LABEL"],
+              x=m["DELTA_PP"],
+              orientation="h",
+              marker=dict(
+                  color=["#10B981" if v >= 0 else "#EF4444" for v in m["DELTA_PP"]],
+                  line=dict(width=0),
+              ),
+              text=[f"{v:+.2f} pp" for v in m["DELTA_PP"]],
+              textposition="outside",
+              cliponaxis=False,
+              textfont=dict(color="#E2E8F0", size=9),
+              hovertemplate="<b>%{y}</b><br>%{customdata}<extra></extra>",
+              customdata=m["HOVER"].values,
+          )
+      )
+      fig.add_vline(x=0, line_width=1, line_color="#64748B")
+      fig.update_layout(
+          title=dict(text=titulo, font=dict(size=13, color="#E2E8F0")),
+          xaxis=dict(
+              title="Variación en puntos porcentuales (pp)",
+              showgrid=True,
+              gridcolor="#334155",
+              zeroline=False,
+          ),
+          yaxis=dict(showgrid=False, tickfont=dict(size=9.5 if len(m) > 12 else 10.5)),
+          plot_bgcolor="rgba(0,0,0,0)",
+          paper_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#94A3B8"),
+          margin=dict(l=20, r=70, t=55, b=45),
+          height=max(alto, len(m) * 26),
       )
       return fig
 
@@ -2583,21 +2686,27 @@ def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
           m2.metric("Clave 87", f"{c87:,}", f"{pct87:.2f}% del padrón")
           m3.metric("Clave 88", f"{c88:,}", f"{pct88:.2f}% del padrón")
 
-          def _fila_agregada(df, etiqueta):
+          def _fila_agregada(df, clave, etiqueta):
               p = df["PADRON"].sum()
               a = df["C87"].sum()
               b = df["C88"].sum()
               return {
+                  "CLAVE": clave,
                   "LABEL": etiqueta,
                   "PADRON": p,
                   "C87": a,
                   "C88": b,
               }
 
+          etiquetas_cmp = {
+              "D": f"Distrito {int(cve_dist):02d}",
+              "E": f"Promedio de {nom}",
+              "N": "Promedio nacional",
+          }
           df_cmp = pd.DataFrame([
-              {"LABEL": f"Distrito {int(cve_dist):02d}", "PADRON": pad, "C87": c87, "C88": c88},
-              _fila_agregada(df_e, f"Promedio de {nom}"),
-              _fila_agregada(df_n, "Promedio nacional"),
+              {"CLAVE": "D", "LABEL": etiquetas_cmp["D"], "PADRON": pad, "C87": c87, "C88": c88},
+              _fila_agregada(df_e, "E", etiquetas_cmp["E"]),
+              _fila_agregada(df_n, "N", etiquetas_cmp["N"]),
           ])
           df_cmp = _preparar(df_cmp, df_cmp["LABEL"].tolist(), ordenar=False)
           fig = _fig(
@@ -2608,6 +2717,46 @@ def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
           )
           st.plotly_chart(fig, width="stretch")
           st.caption(nota)
+
+          if corte_base:
+              df_d_bas = _consulta(
+                  f"AND CLAVE_ENTIDAD = {int(cve_ent)} AND CLAVE_DISTRITO = {int(cve_dist)}",
+                  "CLAVE_DISTRITO",
+                  corte_base,
+              )
+              df_e_bas = _consulta(
+                  f"AND CLAVE_ENTIDAD = {int(cve_ent)} AND CLAVE_DISTRITO != 0",
+                  "CLAVE_DISTRITO",
+                  corte_base,
+              )
+              df_n_bas = _consulta(
+                  "AND CLAVE_ENTIDAD BETWEEN 1 AND 32", "CLAVE_ENTIDAD", corte_base
+              )
+              if not df_d_bas.empty:
+                  fila_bas = df_d_bas.iloc[0]
+                  df_cmp_bas = pd.DataFrame([
+                      {
+                          "CLAVE": "D",
+                          "LABEL": etiquetas_cmp["D"],
+                          "PADRON": int(fila_bas["PADRON"]),
+                          "C87": int(fila_bas["C87"]),
+                          "C88": int(fila_bas["C88"]),
+                      },
+                      _fila_agregada(df_e_bas, "E", etiquetas_cmp["E"]),
+                      _fila_agregada(df_n_bas, "N", etiquetas_cmp["N"]),
+                  ])
+                  st.plotly_chart(
+                      _fig_delta(
+                          df_cmp,
+                          df_cmp_bas,
+                          "<b>Cambio en la proporción de las claves 87 y 88</b>"
+                          f"<br><sup>{formatear_corte(corte_base)} → {formatear_corte(corte)}"
+                          " · puntos porcentuales</sup>",
+                          etiquetas_cmp,
+                          alto=300,
+                      ),
+                      width="stretch",
+                  )
           return
 
       if cve_ent:
@@ -2633,6 +2782,29 @@ def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
           )
           st.plotly_chart(fig, width="stretch")
           st.caption(nota)
+
+          if corte_base:
+              df_bas = _consulta(
+                  f"AND CLAVE_ENTIDAD = {int(cve_ent)} AND CLAVE_DISTRITO != 0",
+                  "CLAVE_DISTRITO",
+                  corte_base,
+              )
+              if not df_bas.empty:
+                  etiquetas_dist = {
+                      v: f"Dist. {int(v):02d}" for v in df_bas["CLAVE"]
+                  }
+                  st.plotly_chart(
+                      _fig_delta(
+                          df,
+                          df_bas,
+                          "<b>Cambio en la proporción de las claves 87 y 88 por distrito</b>"
+                          f"<br><sup>{formatear_corte(corte_base)} → {formatear_corte(corte)}"
+                          " · puntos porcentuales</sup>",
+                          etiquetas_dist,
+                          alto=360,
+                      ),
+                      width="stretch",
+                  )
           return
 
       df = _consulta("AND CLAVE_ENTIDAD BETWEEN 1 AND 32", "CLAVE_ENTIDAD")
@@ -2656,27 +2828,44 @@ def renderizar_origen_8788(corte, alcance_tipo, cve_ent=None, cve_dist=None):
       )
       st.plotly_chart(fig, width="stretch")
       st.caption(nota)
+
+      if corte_base:
+          df_bas = _consulta(
+              "AND CLAVE_ENTIDAD BETWEEN 1 AND 32", "CLAVE_ENTIDAD", corte_base
+          )
+          if not df_bas.empty:
+              etiquetas_ent = {
+                  v: CATALOGO_ENTIDADES.get(int(v), f"Entidad {int(v)}")
+                  for v in df_bas["CLAVE"]
+              }
+              st.plotly_chart(
+                  _fig_delta(
+                      df,
+                      df_bas,
+                      "<b>Cambio en la proporción de las claves 87 y 88 por entidad</b>"
+                      f"<br><sup>{formatear_corte(corte_base)} → {formatear_corte(corte)}"
+                      " · puntos porcentuales</sup>",
+                      etiquetas_ent,
+                      alto=420,
+                  ),
+                  width="stretch",
+              )
   except Exception as e:
       st.warning(f"No se pudo construir el análisis de claves 87/88: {e}")
 
 
+fig_origen_crecimiento = None
 if "Nacional" in alcance or cve_entidad_activa:
     st.markdown("---")
     with st.expander("📍 Posicionamiento y Contexto Geográfico Comparativo", expanded=True):
-        renderizar_grafica_posicionamiento(
+        fig_origen_crecimiento = renderizar_grafica_posicionamiento(
             corte=corte_reciente,
             alcance_tipo=alcance,
             cve_ent=cve_entidad_activa,
             cve_dist=cve_distrito_activo,
             modo_comp=(modo == "Comparar con Periodo Previo"),
             corte_base_comp=corte_base,
-        )
-    with st.expander("🕵️ Claves 87 y 88: proporción del Padrón (Nacional / Entidad / Distrito)", expanded=False):
-        renderizar_origen_8788(
-            corte=corte_reciente,
-            alcance_tipo=alcance,
-            cve_ent=cve_entidad_activa,
-            cve_dist=cve_distrito_activo,
+            devolver_origen=True,
         )
 
 st.markdown("---")
@@ -2851,6 +3040,26 @@ with tab_origen:
                     st.metric("Lista Hijos de Mex (87)", f"{l_87_1:,}", f"{l_87_pct:.2f}% de Lista")
         except Exception as e:
             st.error(f"🛑 Error en pestaña Origen: {e}")
+
+    st.markdown("---")
+    st.markdown("#### 📈 Origen del Crecimiento del Padrón")
+    if fig_origen_crecimiento is not None:
+        st.plotly_chart(fig_origen_crecimiento, width="stretch")
+    else:
+        st.info(
+            "Esta gráfica se calcula al seleccionar una entidad federativa en el ámbito"
+            " geográfico y el modo «Comparar con Periodo Previo»."
+        )
+
+    st.markdown("---")
+    st.markdown("#### 🕵️ Claves 87 y 88: proporción del Padrón")
+    renderizar_origen_8788(
+        corte=corte_reciente,
+        alcance_tipo=alcance,
+        cve_ent=cve_entidad_activa,
+        cve_dist=cve_distrito_activo,
+        corte_base=corte_base if modo == "Comparar con Periodo Previo" else None,
+    )
 
 st.markdown(
     "<div class='footer-fuente notranslate'>📊 Datos oficiales extraídos de la"
