@@ -1,5 +1,7 @@
 from modulo_proyeccion import render_tab_proyeccion
 import time
+import os
+import shutil
 import sqlite3
 import pandas as pd
 import numpy as np
@@ -17,22 +19,64 @@ st.set_page_config(
 DIR_RAIZ = Path(__file__).parent
 DB_PATH = DIR_RAIZ / "derfe_web.db"
 ARCHIVE_7Z_PATH = DIR_RAIZ / "derfe_web.7z"
+LOCK_PATH = DIR_RAIZ / ".extrayendo.lock"
+TMP_EXTRACCION = DIR_RAIZ / ".extraccion_tmp"
+
+
+def _bd_sana():
+    try:
+        con = sqlite3.connect(DB_PATH)
+        con.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()
+        con.close()
+        return True
+    except Exception:
+        return False
+
+
+def _extraer_bd_atomico():
+    # Descomprime en carpeta temporal y solo al final mueve el archivo completo:
+    # nunca queda una .db a la mitad aunque el contenedor se interrumpa.
+    if TMP_EXTRACCION.exists():
+        shutil.rmtree(TMP_EXTRACCION, ignore_errors=True)
+    TMP_EXTRACCION.mkdir()
+    try:
+        with py7zr.SevenZipFile(ARCHIVE_7Z_PATH, mode="r") as z:
+            z.extractall(path=TMP_EXTRACCION)
+        tmp_db = TMP_EXTRACCION / "derfe_web.db"
+        if not tmp_db.exists():
+            raise RuntimeError("derfe_web.db no aparecio tras descomprimir")
+        os.replace(tmp_db, DB_PATH)
+    finally:
+        shutil.rmtree(TMP_EXTRACCION, ignore_errors=True)
+
 
 if ARCHIVE_7Z_PATH.exists():
-    necesita_extraccion = False
-    if not DB_PATH.exists():
-        necesita_extraccion = True
-    elif ARCHIVE_7Z_PATH.stat().st_mtime > DB_PATH.stat().st_mtime:
-        necesita_extraccion = True
-
-    if necesita_extraccion:
-        try:
-            if DB_PATH.exists():
-                DB_PATH.unlink()
-            with py7zr.SevenZipFile(ARCHIVE_7Z_PATH, mode="r") as z:
-                z.extractall(path=DIR_RAIZ)
-        except Exception as e:
-            st.error(f"Error al descomprimir derfe_web.7z: {e}")
+    if not DB_PATH.exists() or ARCHIVE_7Z_PATH.stat().st_mtime > DB_PATH.stat().st_mtime or not _bd_sana():
+        # Candado: si otra sesion del contenedor esta extrayendo, espera a que termine
+        # (candado viejo de mas de 10 min = extraccion interrumpida, se retoma).
+        extrajo = False
+        for _ in range(2):
+            try:
+                fd = os.open(str(LOCK_PATH), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+                extrajo = True
+                break
+            except FileExistsError:
+                if time.time() - LOCK_PATH.stat().st_mtime > 600:
+                    LOCK_PATH.unlink(missing_ok=True)
+                    continue
+                for _ in range(180):
+                    if not LOCK_PATH.exists() and DB_PATH.exists() and _bd_sana():
+                        break
+                    time.sleep(1)
+                break
+        if extrajo:
+            try:
+                _extraer_bd_atomico()
+            except Exception as e:
+                st.error(f"Error al descomprimir derfe_web.7z: {e}")
+            finally:
+                LOCK_PATH.unlink(missing_ok=True)
 
 DB_NAME = str(DB_PATH)
 
