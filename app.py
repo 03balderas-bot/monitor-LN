@@ -1411,9 +1411,10 @@ def generar_grafico_top_clave87(corte):
                    SUM(CAST(COALESCE({c_p87},0) AS REAL)) AS personas_87,
                    SUM(CAST(COALESCE({c_pnat},0) + COALESCE({c_pfor},0) + COALESCE({c_p88},0) + COALESCE({c_p87},0) AS REAL)) AS padron_total
             FROM PE_EO WHERE TRIM(REPLACE(REPLACE(FECHA_CORTE, '-', ''), '_', '')) = ?
-            GROUP BY CLAVE_ENTIDAD ORDER BY personas_87 DESC LIMIT 10
+            GROUP BY CLAVE_ENTIDAD ORDER BY personas_87 DESC
         """
     df = pd.read_sql_query(q, conn, params=[corte_limpio])
+    df = df[(df["CLAVE_ENTIDAD"] >= 1) & (df["CLAVE_ENTIDAD"] <= 32)]
     if df.empty:
       return None
 
@@ -1422,41 +1423,57 @@ def generar_grafico_top_clave87(corte):
         * 100.0
         / df["padron_total"].where(df["padron_total"] != 0)
     ).fillna(0.0)
-    df = df.sort_values(by="personas_87", ascending=True)
-    df["ENTIDAD"] = (
-        df["CLAVE_ENTIDAD"]
+    df = df.sort_values(by="personas_87", ascending=False).reset_index(drop=True)
+    df["RANK"] = df.index + 1
+    df["ETIQUETA"] = (
+        df["RANK"].astype(str)
+        + ". "
+        + df["CLAVE_ENTIDAD"]
         .map(CATALOGO_ENTIDADES)
         .str.replace(" de Ocampo", "", regex=False)
+        .str.replace(" de Zaragoza", "", regex=False)
     )
 
-    plt.figure(figsize=(6.8, 2.2))
-    barras = plt.barh(df["ENTIDAD"], df["personas_87"], color="#8C62B6")
-    plt.title(
-        "Top 10 Entidades: Personas con Clave 87 (hijos de padres"
-        f" mexicanos) - {formatear_corte(corte)}",
+    mitad = 16
+    maximo = df["personas_87"].max()
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(6.8, 2.9))
+    for ax, sub, titulo in (
+        (ax1, df.iloc[:mitad], "Posiciones 1-16"),
+        (ax2, df.iloc[mitad:], "Posiciones 17-32"),
+    ):
+      sub = sub.sort_values(by="personas_87", ascending=True)
+      barras = ax.barh(sub["ETIQUETA"], sub["personas_87"], color="#8C62B6", height=0.68)
+      ax.set_xlim(0, maximo * 1.6)
+      ax.set_title(titulo, fontsize=6.5, fontweight="bold", color="#4A2E7A")
+      ax.set_xlabel("Personas con Clave 87 (% del padrón estatal)", fontsize=5.5)
+      ax.tick_params(axis="y", labelsize=5)
+      ax.tick_params(axis="x", labelsize=4.8)
+      ax.xaxis.set_major_locator(plt.MaxNLocator(5))
+      ax.spines[["top", "right"]].set_visible(False)
+      for barra, val, pct in zip(barras, sub["personas_87"], sub["pct"]):
+        ax.text(
+            barra.get_width(),
+            barra.get_y() + barra.get_height() / 2,
+            f" {int(val):,} ({pct:.2f}%)",
+            va="center",
+            ha="left",
+            fontsize=4.6,
+            color="#334155",
+        )
+
+    fig.suptitle(
+        "32 Entidades: Personas con Clave 87 (hijos de padres mexicanos) -"
+        f" {formatear_corte(corte)}",
         fontsize=8.5,
         fontweight="bold",
         color="#4A2E7A",
+        y=0.995,
     )
-    plt.xlabel("Personas con Clave 87 en el Padrón", fontsize=8)
-    plt.xlim(0, df["personas_87"].max() * 1.55)
-    for barra, val, pct in zip(barras, df["personas_87"], df["pct"]):
-      plt.text(
-          barra.get_width(),
-          barra.get_y() + barra.get_height() / 2,
-          f"  {int(val):,}  ({pct:.2f}% del padrón estatal)",
-          va="center",
-          ha="left",
-          fontsize=6.5,
-          color="#334155",
-      )
-    plt.xticks(fontsize=7.5)
-    plt.yticks(fontsize=7.5)
-    plt.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, 0.955))
 
     buf = BytesIO()
-    plt.savefig(buf, format="png", dpi=220)
-    plt.close()
+    fig.savefig(buf, format="png", dpi=220)
+    plt.close(fig)
     buf.seek(0)
     return buf
   except Exception as e:
@@ -2128,7 +2145,7 @@ def generar_pdf_reporte(
     story.append(Spacer(1, 3))
 
   img_c87 = generar_grafico_top_clave87(corte_rec)
-  agregar_imagen_centrada(img_c87, 430, 115)
+  agregar_imagen_centrada(img_c87, 430, 180)
 
   if corte_bas:
     story.append(PageBreak())
