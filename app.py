@@ -6,6 +6,7 @@ import sqlite3
 import unicodedata
 import os
 import shutil
+import json
 import time
 from datetime import datetime
 from io import BytesIO
@@ -39,6 +40,7 @@ DB_PATH = DIR_RAIZ / "derfe_web.db"
 ARCHIVE_7Z_PATH = DIR_RAIZ / "derfe_web.7z"
 LOCK_PATH = DIR_RAIZ / ".extrayendo.lock"
 TMP_EXTRACCION = DIR_RAIZ / ".extraccion_tmp"
+META_PATH = DIR_RAIZ / ".extraccion_ok.json"
 
 
 def _bd_sana():
@@ -49,6 +51,22 @@ def _bd_sana():
         return True
     except Exception:
         return False
+
+
+def _extraer_si_conviene():
+    # Evita re-extraer cuando el .7z ya es el mismo que originó la .db actual
+    # (al recomprimir, el .7z queda con mtime mayor que la .db y sin esto
+    # cada arranque reintentaría la extracción de los 283 MB).
+    if not DB_PATH.exists() or not _bd_sana():
+        return True
+    try:
+        meta = json.loads(META_PATH.read_text(encoding="utf-8"))
+        return not (
+            meta.get("7z_mtime") == ARCHIVE_7Z_PATH.stat().st_mtime
+            and meta.get("7z_size") == ARCHIVE_7Z_PATH.stat().st_size
+        )
+    except Exception:
+        return True
 
 
 def _extraer_bd_atomico():
@@ -69,7 +87,7 @@ def _extraer_bd_atomico():
 
 
 if ARCHIVE_7Z_PATH.exists():
-    if not DB_PATH.exists() or ARCHIVE_7Z_PATH.stat().st_mtime > DB_PATH.stat().st_mtime or not _bd_sana():
+    if _extraer_si_conviene():
         # Candado: si otra sesion del contenedor esta extrayendo, espera a que termine
         # (candado viejo de mas de 10 min = extraccion interrumpida, se retoma).
         extrajo = False
@@ -91,6 +109,10 @@ if ARCHIVE_7Z_PATH.exists():
         if extrajo:
             try:
                 _extraer_bd_atomico()
+                META_PATH.write_text(json.dumps({
+                    "7z_mtime": ARCHIVE_7Z_PATH.stat().st_mtime,
+                    "7z_size": ARCHIVE_7Z_PATH.stat().st_size,
+                }), encoding="utf-8")
             except Exception as e:
                 st.error(f"Error al descomprimir derfe_web.7z: {e}")
             finally:

@@ -11,3 +11,6 @@ __pycache__/
 insumos_originales/
 respaldos_seguros/
 *.db
+.extraccion_ok.json
+.extrayendo.lock
+.extraccion_tmp/

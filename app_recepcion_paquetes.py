@@ -2,6 +2,7 @@ from modulo_proyeccion import render_tab_proyeccion
 import time
 import os
 import shutil
+import json
 import sqlite3
 import pandas as pd
 import numpy as np
@@ -21,6 +22,7 @@ DB_PATH = DIR_RAIZ / "derfe_web.db"
 ARCHIVE_7Z_PATH = DIR_RAIZ / "derfe_web.7z"
 LOCK_PATH = DIR_RAIZ / ".extrayendo.lock"
 TMP_EXTRACCION = DIR_RAIZ / ".extraccion_tmp"
+META_PATH = DIR_RAIZ / ".extraccion_ok.json"
 
 
 def _bd_sana():
@@ -31,6 +33,22 @@ def _bd_sana():
         return True
     except Exception:
         return False
+
+
+def _extraer_si_conviene():
+    # Evita re-extraer cuando el .7z ya es el mismo que originó la .db actual
+    # (al recomprimir, el .7z queda con mtime mayor que la .db y sin esto
+    # cada arranque reintentaría la extracción de los 283 MB).
+    if not DB_PATH.exists() or not _bd_sana():
+        return True
+    try:
+        meta = json.loads(META_PATH.read_text(encoding="utf-8"))
+        return not (
+            meta.get("7z_mtime") == ARCHIVE_7Z_PATH.stat().st_mtime
+            and meta.get("7z_size") == ARCHIVE_7Z_PATH.stat().st_size
+        )
+    except Exception:
+        return True
 
 
 def _extraer_bd_atomico():
@@ -51,7 +69,7 @@ def _extraer_bd_atomico():
 
 
 if ARCHIVE_7Z_PATH.exists():
-    if not DB_PATH.exists() or ARCHIVE_7Z_PATH.stat().st_mtime > DB_PATH.stat().st_mtime or not _bd_sana():
+    if _extraer_si_conviene():
         # Candado: si otra sesion del contenedor esta extrayendo, espera a que termine
         # (candado viejo de mas de 10 min = extraccion interrumpida, se retoma).
         extrajo = False
@@ -73,6 +91,10 @@ if ARCHIVE_7Z_PATH.exists():
         if extrajo:
             try:
                 _extraer_bd_atomico()
+                META_PATH.write_text(json.dumps({
+                    "7z_mtime": ARCHIVE_7Z_PATH.stat().st_mtime,
+                    "7z_size": ARCHIVE_7Z_PATH.stat().st_size,
+                }), encoding="utf-8")
             except Exception as e:
                 st.error(f"Error al descomprimir derfe_web.7z: {e}")
             finally:
@@ -123,6 +145,162 @@ def interpolar_color_pausa(factor_severidad):
         g = int(193 + (28 - 193) * local_f)
         b = int(7 + (28 - 7) * local_f)
     return f"rgb({r},{g},{b})"
+
+
+# --- RENDERIZADO DE LA CARRERA (métricas + gráfica) DENTRO DE UN CONTENEDOR ---
+# Al pintarse en un placeholder propio, la animación actualiza solo la gráfica
+# en lugar de redibujar toda la página en cada tramo (elimina el parpadeo).
+def pintar_carrera(contenedor, paso_actual_str, df_universo, df_llegadas, cfg_proceso, proceso_sel, nivel_seleccionado):
+    with contenedor.container():
+        # Acumulado hasta el corte actual
+        llegadas_hasta_corte = df_llegadas[df_llegadas["bloque_tiempo"] <= paso_actual_str]
+        recibidos_dict = llegadas_hasta_corte.groupby("id_unidad")["recibidos_tramo"].sum().to_dict()
+
+        ultimos_bloques_dict = llegadas_hasta_corte[llegadas_hasta_corte["recibidos_tramo"] > 0].groupby("id_unidad")["bloque_tiempo"].max().to_dict()
+
+        df_estado = df_universo.copy()
+        df_estado["recibidos"] = df_estado["id_unidad"].map(recibidos_dict).fillna(0).astype(int)
+        df_estado["porcentaje"] = (df_estado["recibidos"] / df_estado["total_esperadas"]) * 100
+        df_estado["ultimo_bloque"] = df_estado["id_unidad"].map(ultimos_bloques_dict).fillna(cfg_proceso["hora_inicio"][:16])
+
+        # Máximo de horas de pausa acumuladas para calibrar el semáforo degradado Verde -> Rojo
+        max_horas_pausa_grupo = df_estado["horas_pausa_total"].max()
+        if max_horas_pausa_grupo == 0 or pd.isna(max_horas_pausa_grupo):
+            max_horas_pausa_grupo = 1.0
+
+        colores_barra = []
+        textos_dentro = []
+        colores_texto = []
+        textos_hover = []
+
+        es_segundo_dia = paso_actual_str >= cfg_proceso["hora_medianoche"][:16]
+        dt_paso_actual = pd.to_datetime(paso_actual_str)
+
+        for _, row in df_estado.iterrows():
+            ya_concluyo = (paso_actual_str >= row["bloque_fin_real"]) and (row["total_recibidos_final"] > 0)
+
+            dt_ult_bloque = pd.to_datetime(row["ultimo_bloque"])
+            horas_inactivo_momento = (dt_paso_actual - dt_ult_bloque).total_seconds() / 3600.0
+
+            n_pausas = int(row["num_pausas"])
+            tot_h_pausa = float(row["horas_pausa_total"])
+            h_pausa_entera = int(tot_h_pausa)
+            m_pausa_entero = int(round((tot_h_pausa - h_pausa_entera) * 60))
+
+            if ya_concluyo:
+                # Degradado continuo en la barra: de Verde Esmeralda (sin pausas) a Rojo Carmesí (máximas pausas)
+                if n_pausas > 0 and tot_h_pausa >= 0.5:
+                    factor_severidad = tot_h_pausa / max_horas_pausa_grupo
+                    color_termico = interpolar_color_pausa(factor_severidad)
+                    colores_barra.append(color_termico)
+                else:
+                    colores_barra.append("#28a745")  # Verde puro continuo
+                colores_texto.append("#ffffff")
+            else:
+                if es_segundo_dia:
+                    colores_barra.append("#ffc107")  # 🟡 Amarillo día 2
+                    colores_texto.append("#000000")
+                else:
+                    colores_barra.append("#dc3545")  # 🔴 Rojo día 1
+                    colores_texto.append("#ffffff")
+
+            recibidos_mostrar = row["total_recibidos_final"] if ya_concluyo else row["recibidos"]
+
+            if row["porcentaje"] > 4:
+                if ya_concluyo and n_pausas > 0:
+                    textos_dentro.append(f"🏁 ({row['total_esperadas']}/{recibidos_mostrar}) [Pausas: {h_pausa_entera}h {m_pausa_entero:02d}m]")
+                else:
+                    textos_dentro.append(f"({row['total_esperadas']}/{recibidos_mostrar})")
+            else:
+                textos_dentro.append("")
+
+            # Tooltip enriquecido
+            detalle_hover = f"<b>{row['nombre_unidad']}</b><br>Esperadas: {row['total_esperadas']:,}<br>Recibidas: {row['recibidos']:,}<br>Avance: {row['porcentaje']:.2f}%"
+            if ya_concluyo:
+                detalle_hover += f"<br>🏁 <b>Conclusión de Acopio:</b> {row['hora_fin_real']}"
+                if n_pausas > 0:
+                    pct_severidad = round(tot_h_pausa / max_horas_pausa_grupo * 100, 1)
+                    detalle_hover += (
+                        f"<br><br>⏸️ <b>Auditoría de Pausas (≥ 30 min):</b>"
+                        f"<br>• <b>Total de Pausas Registradas:</b> {n_pausas} evento(s)"
+                        f"<br>• <b>Tiempo Acumulado en Pausa:</b> {h_pausa_entera}h {m_pausa_entero:02d}m"
+                        f"<br>• <b>Pausa Continua Máxima:</b> {row['max_pausa_horas']:.1f} hrs"
+                        f"<br>• <b>Tonalidad Térmica:</b> {pct_severidad}% de severidad relativa (Verde ➔ Rojo)"
+                    )
+                else:
+                    detalle_hover += "<br>✅ <b>Flujo Continuo:</b> Sin pausas superiores a 30 minutos (Verde Esmeralda Puro)."
+            else:
+                if horas_inactivo_momento >= 0.5 and row["recibidos"] > 0:
+                    h_inact_cur = int(horas_inactivo_momento)
+                    m_inact_cur = int(round((horas_inactivo_momento - h_inact_cur) * 60))
+                    detalle_hover += f"<br>⏳ <b>En pausa actual:</b> Lleva {h_inact_cur}h {m_inact_cur:02d}m sin paquetes nuevos."
+
+            textos_hover.append(detalle_hover)
+
+        df_estado["color"] = colores_barra
+        df_estado["texto_dentro"] = textos_dentro
+        df_estado["color_texto"] = colores_texto
+        df_estado["hover_info"] = textos_hover
+
+        df_estado = df_estado.sort_values(by="id_unidad", ascending=False)
+
+        tot_esp = df_estado["total_esperadas"].sum()
+        tot_rec = df_estado["recibidos"].sum()
+        tot_fal = tot_esp - tot_rec
+        pct_glob = (tot_rec / tot_esp * 100) if tot_esp > 0 else 0
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Hora de Corte (Acopio)", paso_actual_str)
+        m2.metric("Paquetes en Sede", f"{tot_rec:,} / {tot_esp:,}")
+        m3.metric("Faltantes al Corte", f"{tot_fal:,}")
+        m4.metric("% Recuperación", f"{pct_glob:.2f}%")
+
+        st.divider()
+
+        posiciones_y = list(range(len(df_estado)))
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            y=posiciones_y,
+            x=df_estado["porcentaje"],
+            orientation="h",
+            marker=dict(
+                color=df_estado["color"],
+                line=dict(color="#111111", width=1)
+            ),
+            text=df_estado["texto_dentro"],
+            textposition="inside",
+            insidetextanchor="middle",
+            textfont=dict(color=df_estado["color_texto"], size=12, family="Arial Black"),
+            cliponaxis=False,
+            hoverinfo="text",
+            hovertext=df_estado["hover_info"]
+        ))
+
+        fig.update_layout(
+            title=dict(
+                text=f"<b>Ritmo de Recepción ({proceso_sel} - {nivel_seleccionado}) | Corte: {paso_actual_str} hrs</b>",
+                font=dict(size=18, color="#1f2937")
+            ),
+            xaxis=dict(
+                title="% de Paquetes Recibidos (Verde = Flujo continuo | Ámbar / Rojo = Pausas acumuladas prolongadas)",
+                range=[0, 102],
+                ticksuffix="%",
+                gridcolor="#d1d5db"
+            ),
+            yaxis=dict(
+                tickmode="array",
+                tickvals=posiciones_y,
+                ticktext=list(df_estado["nombre_unidad"]),
+                tickfont=dict(size=12, color="#374151"),
+                automargin=True
+            ),
+            height=max(450, len(df_estado) * 32),
+            margin=dict(l=260, r=20, t=50, b=40)
+        )
+
+        fig.add_vline(x=100, line_dash="dash", line_color="#334155", line_width=2, annotation_text=" 100%", annotation_font_color="#334155")
+        st.plotly_chart(fig, width='stretch')
 
 # --- CONSULTAS DE CATÁLOGOS BASE ---
 @st.cache_data
@@ -751,155 +929,14 @@ with tab_monitoreo:
                 on_change=actualizar_slider
             )
 
-            # Acumulado hasta el corte actual
-            llegadas_hasta_corte = df_llegadas[df_llegadas["bloque_tiempo"] <= paso_actual_str]
-            recibidos_dict = llegadas_hasta_corte.groupby("id_unidad")["recibidos_tramo"].sum().to_dict()
+            # Métricas + gráfica en un placeholder: la animación los actualiza en
+            # su propio contenedor sin redibujar toda la página (sin parpadeo).
+            ph_carrera = st.empty()
+            pintar_carrera(ph_carrera, paso_actual_str, df_universo, df_llegadas, cfg_proceso, proceso_sel, nivel_seleccionado)
 
-            ultimos_bloques_dict = llegadas_hasta_corte[llegadas_hasta_corte["recibidos_tramo"] > 0].groupby("id_unidad")["bloque_tiempo"].max().to_dict()
-
-            df_estado = df_universo.copy()
-            df_estado["recibidos"] = df_estado["id_unidad"].map(recibidos_dict).fillna(0).astype(int)
-            df_estado["porcentaje"] = (df_estado["recibidos"] / df_estado["total_esperadas"]) * 100
-            df_estado["ultimo_bloque"] = df_estado["id_unidad"].map(ultimos_bloques_dict).fillna(cfg_proceso["hora_inicio"][:16])
-
-            # Máximo de horas de pausa acumuladas para calibrar el semáforo degradado Verde -> Rojo
-            max_horas_pausa_grupo = df_estado["horas_pausa_total"].max()
-            if max_horas_pausa_grupo == 0 or pd.isna(max_horas_pausa_grupo):
-                max_horas_pausa_grupo = 1.0
-
-            colores_barra = []
-            textos_dentro = []
-            colores_texto = []
-            textos_hover = []
-
-            es_segundo_dia = paso_actual_str >= cfg_proceso["hora_medianoche"][:16]
-            dt_paso_actual = pd.to_datetime(paso_actual_str)
-
-            for _, row in df_estado.iterrows():
-                ya_concluyo = (paso_actual_str >= row["bloque_fin_real"]) and (row["total_recibidos_final"] > 0)
-
-                dt_ult_bloque = pd.to_datetime(row["ultimo_bloque"])
-                horas_inactivo_momento = (dt_paso_actual - dt_ult_bloque).total_seconds() / 3600.0
-
-                n_pausas = int(row["num_pausas"])
-                tot_h_pausa = float(row["horas_pausa_total"])
-                h_pausa_entera = int(tot_h_pausa)
-                m_pausa_entero = int(round((tot_h_pausa - h_pausa_entera) * 60))
-
-                if ya_concluyo:
-                    # Degradado continuo en la barra: de Verde Esmeralda (sin pausas) a Rojo Carmesí (máximas pausas)
-                    if n_pausas > 0 and tot_h_pausa >= 0.5:
-                        factor_severidad = tot_h_pausa / max_horas_pausa_grupo
-                        color_termico = interpolar_color_pausa(factor_severidad)
-                        colores_barra.append(color_termico)
-                    else:
-                        colores_barra.append("#28a745")  # Verde puro continuo
-                    colores_texto.append("#ffffff")
-                else:
-                    if es_segundo_dia:
-                        colores_barra.append("#ffc107")  # 🟡 Amarillo día 2
-                        colores_texto.append("#000000")
-                    else:
-                        colores_barra.append("#dc3545")  # 🔴 Rojo día 1
-                        colores_texto.append("#ffffff")
-
-                recibidos_mostrar = row["total_recibidos_final"] if ya_concluyo else row["recibidos"]
-
-                if row["porcentaje"] > 4:
-                    if ya_concluyo and n_pausas > 0:
-                        textos_dentro.append(f"🏁 ({row['total_esperadas']}/{recibidos_mostrar}) [Pausas: {h_pausa_entera}h {m_pausa_entero:02d}m]")
-                    else:
-                        textos_dentro.append(f"({row['total_esperadas']}/{recibidos_mostrar})")
-                else:
-                    textos_dentro.append("")
-
-                # Tooltip enriquecido
-                detalle_hover = f"<b>{row['nombre_unidad']}</b><br>Esperadas: {row['total_esperadas']:,}<br>Recibidas: {row['recibidos']:,}<br>Avance: {row['porcentaje']:.2f}%"
-                if ya_concluyo:
-                    detalle_hover += f"<br>🏁 <b>Conclusión de Acopio:</b> {row['hora_fin_real']}"
-                    if n_pausas > 0:
-                        pct_severidad = round(tot_h_pausa / max_horas_pausa_grupo * 100, 1)
-                        detalle_hover += (
-                            f"<br><br>⏸️ <b>Auditoría de Pausas (≥ 30 min):</b>"
-                            f"<br>• <b>Total de Pausas Registradas:</b> {n_pausas} evento(s)"
-                            f"<br>• <b>Tiempo Acumulado en Pausa:</b> {h_pausa_entera}h {m_pausa_entero:02d}m"
-                            f"<br>• <b>Pausa Continua Máxima:</b> {row['max_pausa_horas']:.1f} hrs"
-                            f"<br>• <b>Tonalidad Térmica:</b> {pct_severidad}% de severidad relativa (Verde ➔ Rojo)"
-                        )
-                    else:
-                        detalle_hover += "<br>✅ <b>Flujo Continuo:</b> Sin pausas superiores a 30 minutos (Verde Esmeralda Puro)."
-                else:
-                    if horas_inactivo_momento >= 0.5 and row["recibidos"] > 0:
-                        h_inact_cur = int(horas_inactivo_momento)
-                        m_inact_cur = int(round((horas_inactivo_momento - h_inact_cur) * 60))
-                        detalle_hover += f"<br>⏳ <b>En pausa actual:</b> Lleva {h_inact_cur}h {m_inact_cur:02d}m sin paquetes nuevos."
-
-                textos_hover.append(detalle_hover)
-
-            df_estado["color"] = colores_barra
-            df_estado["texto_dentro"] = textos_dentro
-            df_estado["color_texto"] = colores_texto
-            df_estado["hover_info"] = textos_hover
-
-            df_estado = df_estado.sort_values(by="id_unidad", ascending=False)
-
-            tot_esp = df_estado["total_esperadas"].sum()
-            tot_rec = df_estado["recibidos"].sum()
-            tot_fal = tot_esp - tot_rec
-            pct_glob = (tot_rec / tot_esp * 100) if tot_esp > 0 else 0
-
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Hora de Corte (Acopio)", paso_actual_str)
-            m2.metric("Paquetes en Sede", f"{tot_rec:,} / {tot_esp:,}")
-            m3.metric("Faltantes al Corte", f"{tot_fal:,}")
-            m4.metric("% Recuperación", f"{pct_glob:.2f}%")
-
-            st.divider()
-
-            posiciones_y = list(range(len(df_estado)))
-
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                y=posiciones_y,
-                x=df_estado["porcentaje"],
-                orientation="h",
-                marker=dict(
-                    color=df_estado["color"],
-                    line=dict(color="#111111", width=1)
-                ),
-                text=df_estado["texto_dentro"],
-                textposition="inside",
-                insidetextanchor="middle",
-                textfont=dict(color=df_estado["color_texto"], size=12, family="Arial Black"),
-                cliponaxis=False,
-                hoverinfo="text",
-                hovertext=df_estado["hover_info"]
-            ))
-
-            fig.update_layout(
-                title=dict(
-                    text=f"<b>Ritmo de Recepción ({proceso_sel} - {nivel_seleccionado}) | Corte: {paso_actual_str} hrs</b>",
-                    font=dict(size=18, color="#ffffff")
-                ),
-                xaxis=dict(
-                    title="% de Paquetes Recibidos (Verde = Flujo continuo | Ámbar / Rojo = Pausas acumuladas prolongadas)",
-                    range=[0, 102],
-                    ticksuffix="%",
-                    gridcolor="#333333"
-                ),
-                yaxis=dict(
-                    tickmode="array",
-                    tickvals=posiciones_y,
-                    ticktext=list(df_estado["nombre_unidad"]),
-                    tickfont=dict(size=12, color="#ffffff"),
-                    automargin=True
-                ),
-                height=max(450, len(df_estado) * 32),
-                margin=dict(l=260, r=20, t=50, b=40)
-            )
-
-            fig.add_vline(x=100, line_dash="dash", line_color="#ffffff", line_width=2, annotation_text=" 100%", annotation_font_color="#ffffff")
-            st.plotly_chart(fig, width='stretch')
+            if st.session_state.get("carrera_terminada"):
+                st.session_state.carrera_terminada = False
+                st.success(f"🏁 Fin de la ventana oficial PREP ({cfg_proceso['hora_cierre_prep']} hrs).")
 
             st.markdown("### 🏆 Orden de Conclusión de la Recepción de Paquetes")
             st.caption("Orden cronológico en que las unidades recibieron físicamente su último paquete en PREP con desglose de pausas operativas.")
@@ -996,8 +1033,19 @@ with tab_monitoreo:
 
             if st.session_state.reproduciendo:
                 if st.session_state.paso_idx < total_pasos - 1:
-                    time.sleep(velocidad_sec)
-                    st.session_state.paso_idx += 1
+                    avances = 0
+                    while st.session_state.paso_idx < total_pasos - 1:
+                        st.session_state.paso_idx += 1
+                        avances += 1
+                        pintar_carrera(
+                            ph_carrera, etiquetas_tiempo[st.session_state.paso_idx],
+                            df_universo, df_llegadas, cfg_proceso, proceso_sel, nivel_seleccionado
+                        )
+                        time.sleep(velocidad_sec)
+                        if avances % 5 == 0:
+                            st.rerun()  # punto de control: aplica Pausa/Reset y sincroniza el slider
+                    st.session_state.reproduciendo = False
+                    st.session_state.carrera_terminada = True
                     st.rerun()
                 else:
                     st.session_state.reproduciendo = False
@@ -1078,21 +1126,21 @@ with tab_comparativa:
         fig_comp.update_layout(
             title=dict(
                 text=f"<b>Curva Acumulada de Acopio (% Recuperación) | {nivel_seleccionado}</b>",
-                font=dict(size=18, color="#ffffff")
+                font=dict(size=18, color="#1f2937")
             ),
             xaxis=dict(
                 title="Horas Transcurridas desde el Cierre de Casillas (18:00 hrs = Hora 0)",
                 range=[0, 26.5],
                 dtick=2,
                 ticksuffix=" hrs",
-                gridcolor="#333333"
+                gridcolor="#d1d5db"
             ),
             yaxis=dict(
                 title="% Acumulado de Paquetes Recibidos",
                 range=[0, 105],
                 autorange=False,
                 ticksuffix="%",
-                gridcolor="#333333"
+                gridcolor="#d1d5db"
             ),
             height=460,
             margin=dict(l=60, r=40, t=50, b=40),
@@ -1128,18 +1176,18 @@ with tab_comparativa:
             barmode="group",
             title=dict(
                 text=f"<b>Ritmo Instantáneo de Llegadas por Hora | {nivel_seleccionado}</b>",
-                font=dict(size=17, color="#ffffff")
+                font=dict(size=17, color="#1f2937")
             ),
             xaxis=dict(
                 title="Hora Transcurrida desde el Cierre (18:00 hrs = Hora 0)",
                 range=[-0.5, 26.5],
                 dtick=1,
                 ticksuffix="h",
-                gridcolor="#333333"
+                gridcolor="#d1d5db"
             ),
             yaxis=dict(
                 title="Cantidad de Paquetes Recibidos en la Hora",
-                gridcolor="#333333"
+                gridcolor="#d1d5db"
             ),
             height=380,
             margin=dict(l=60, r=40, t=50, b=40),
