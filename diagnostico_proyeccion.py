@@ -17,7 +17,7 @@ import streamlit as st
 
 import modulo_diagnostico as md
 
-st.set_page_config(page_title="Diagnóstico de proyección de casillas", layout="wide")
+st.set_page_config(page_title="Proyección de casillas 2026 — Monitor LN", layout="wide")
 
 DIR = Path(__file__).parent
 DB_PATH = DIR / "diagnostico.db"
@@ -98,7 +98,8 @@ st.title("Diagnóstico de proyección de casillas 2026")
 st.caption(
     "Sube tu proyección y se compara contra la referencia construida con el 100% de las "
     "actas de Senadores 2024, los catálogos seccionales y el reseccionamiento. "
-    "Tu archivo se procesa en memoria y no se guarda en el servidor."
+    "También puedes subir tu conformación PEF 2024 y generar la conformación 2026 "
+    "con el corte oficial. Tu archivo se procesa en memoria y no se guarda en el servidor."
 )
 
 if not _bd_sana():
@@ -109,6 +110,128 @@ cortes = md.listar_cortes()
 entidades = md.catalogo_entidades()
 if not cortes or not entidades:
     st.error("La base de referencia está vacía.")
+    st.stop()
+
+modo = st.radio(
+    "¿Qué quieres hacer?",
+    ["Diagnosticar mi proyección contra la referencia",
+     "Generar la conformación 2026 desde mi PEF 2024"],
+    horizontal=True,
+)
+
+
+def _selectores():
+    col_ent, col_dist = st.columns([1.5, 1.1])
+    with col_ent:
+        claves = list(entidades.keys())
+        ent = st.selectbox(
+            "Entidad Federativa:", claves,
+            index=claves.index(20) if 20 in claves else 0,
+            format_func=lambda x: entidades.get(x, str(x)),
+        )
+    with col_dist:
+        opciones = ["Todos"] + list(range(1, 33))
+        dist = st.selectbox(
+            "Distrito Federal:", opciones,
+            format_func=lambda x: f"Distrito {x:02d}" if isinstance(x, int) else "Todos los Distritos",
+        )
+    return ent, dist
+
+
+def _plantilla():
+    with st.expander("Formato esperado y plantilla"):
+        st.markdown(
+            "El archivo debe traer una fila por casilla. Columnas obligatorias: "
+            "**Sección** y **Tipo de Casilla**. Opcionales: Distrito, Municipio, Localidad, "
+            "Cantidad Casilla, Lista Nominal y Padrón Electoral.\n\n"
+            "Tipos aceptados: `B`, `C1`…`Cn`, `E1`…`En`, `S`, `E1C1`."
+        )
+        plantilla = pd.DataFrame([
+            [3, 386, 37, 22, 1, "B", 656, 665],
+            [3, 386, 37, 22, 2, "C1", 655, 665],
+            [3, 386, 148, 1, 1, "E1", 182, 198],
+        ], columns=md.COLUMNAS)
+        st.download_button(
+            "Descargar plantilla CSV",
+            data=plantilla.to_csv(index=False).encode("utf-8-sig"),
+            file_name="plantilla_proyeccion.csv",
+            mime="text/csv",
+        )
+
+
+def _ambito(entidad, dist_num):
+    nombre = entidades.get(entidad, "").split(" - ", 1)[-1]
+    if dist_num:
+        return f"Distrito {dist_num:02d} — {nombre}"
+    return f"Estado de {nombre}"
+
+
+if modo.startswith("Generar"):
+    entidad, distrito = _selectores()
+    dist_num = None if distrito == "Todos" else distrito
+    _plantilla()
+    archivo = st.file_uploader(
+        "Sube tu conformación PEF 2024 (.xlsx, .xls o .csv)",
+        type=["xlsx", "xls", "csv"])
+    if archivo is None:
+        st.info("Selecciona entidad y distrito, y sube tu conformación PEF 2024 "
+                "para generar la versión 2026 con el corte oficial.")
+        st.stop()
+    try:
+        crudo = md.leer_archivo(archivo)
+        res = md.proyectar_conformacion(crudo, entidad, dist_num)
+    except ValueError as e:
+        st.error(str(e))
+        st.stop()
+    except Exception as e:
+        st.error(f"No se pudo leer el archivo: {e}")
+        st.stop()
+
+    totales = res["totales"]
+    t24 = int(totales.loc[totales["Tipo"] == "Total", "Tu archivo (2024)"].iloc[0])
+    t26 = int(totales.loc[totales["Tipo"] == "Total", "Conformación 2026"].iloc[0])
+    ambito = _ambito(entidad, dist_num)
+
+    st.markdown("---")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Casillas PEF 2024 (tu archivo)", f"{t24:,}")
+    k2.metric("Casillas 2026 (proyección)", f"{t26:,}")
+    k3.metric("Diferencia", f"{t26 - t24:+,}")
+    k4.metric("Secciones", f"{res['n_secciones']:,}")
+    st.caption(f"Ámbito: {ambito} | Corte oficial: {md.CORTE_OFICIAL}")
+
+    for aviso in res["avisos"]:
+        st.warning(aviso)
+
+    st.subheader("Totales por tipo de casilla")
+    st.dataframe(totales, width="stretch", hide_index=True)
+
+    st.subheader("Cambios por sección")
+    st.dataframe(res["resumen"], width="stretch", hide_index=True)
+    with st.expander("Detalle por sección (2024 vs 2026)"):
+        st.dataframe(res["secciones"], width="stretch", hide_index=True)
+
+    nombre = f"conformacion_2026_{entidad}_" \
+        f"{distrito if isinstance(distrito, int) else 'todas'}_{md.CORTE_OFICIAL}"
+    col_x, col_p = st.columns(2)
+    with col_x:
+        st.download_button(
+            "Descargar conformación 2026 (Excel)",
+            data=md.conformacion_a_excel(res),
+            file_name=f"{nombre}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+        )
+    with col_p:
+        st.download_button(
+            "Descargar informe en PDF",
+            data=md.generar_pdf_conformacion(res, ambito, getattr(archivo, "name", None)),
+            file_name=f"{nombre}.pdf",
+            mime="application/pdf",
+        )
+
+    st.subheader("Conformación 2026 (lista de casillas)")
+    st.dataframe(res["salida"], width="stretch", hide_index=True)
     st.stop()
 
 col_corte, col_ent, col_dist = st.columns([1.2, 1.5, 1.1])
@@ -130,25 +253,7 @@ with col_dist:
 dist_num = None if distrito == "Todos" else distrito
 
 archivo = st.file_uploader("Sube tu proyección (.xlsx, .xls o .csv)", type=["xlsx", "xls", "csv"])
-
-with st.expander("Formato esperado y plantilla"):
-    st.markdown(
-        "El archivo debe traer una fila por casilla. Columnas obligatorias: "
-        "**Sección** y **Tipo de Casilla**. Opcionales: Distrito, Municipio, Localidad, "
-        "Cantidad Casilla, Lista Nominal y Padrón Electoral.\n\n"
-        "Tipos aceptados: `B`, `C1`…`Cn`, `E1`…`En`, `S`, `E1C1`."
-    )
-    plantilla = pd.DataFrame([
-        [3, 386, 37, 22, 1, "B", 656, 665],
-        [3, 386, 37, 22, 2, "C1", 655, 665],
-        [3, 386, 148, 1, 1, "E1", 182, 198],
-    ], columns=md.COLUMNAS)
-    st.download_button(
-        "Descargar plantilla CSV",
-        data=plantilla.to_csv(index=False).encode("utf-8-sig"),
-        file_name="plantilla_proyeccion.csv",
-        mime="text/csv",
-    )
+_plantilla()
 
 if archivo is None:
     st.info("Selecciona entidad y distrito, y sube tu archivo para iniciar el diagnóstico.")
@@ -175,11 +280,7 @@ k2.metric("Casillas de referencia", f"{total_ref:,}")
 k3.metric("Diferencia", f"{total_ref - total_archivo:+,}")
 k4.metric("Secciones comparadas", f"{resultado['n_ref']:,}")
 
-ambito = entidades.get(entidad, "")
-if dist_num:
-    ambito = f"Distrito {dist_num:02d} — {ambito.split(' - ', 1)[-1]}"
-else:
-    ambito = f"Estado de {ambito.split(' - ', 1)[-1]}"
+ambito = _ambito(entidad, dist_num)
 st.caption(f"Ámbito: {ambito} | Corte de referencia: {corte}")
 
 info_corte = resultado["corte"]
