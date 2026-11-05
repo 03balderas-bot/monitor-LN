@@ -144,7 +144,10 @@ def _plantilla():
             "El archivo debe traer una fila por casilla. Columnas obligatorias: "
             "**Sección** y **Tipo de Casilla**. Opcionales: Distrito, Municipio, Localidad, "
             "Cantidad Casilla, Lista Nominal y Padrón Electoral.\n\n"
-            "Tipos aceptados: `B`, `C1`…`Cn`, `E1`…`En`, `S`, `E1C1`."
+            "Tipos aceptados: `B`, `C1`…`Cn`, `E1`…`En`, `S`, `E1C1`.\n\n"
+            "También puedes subir el reporte SUCyMEC *Secciones donde se instalarán "
+            "Casillas Extraordinarias*: se reconoce su columna **Casilla** (`B`, `E1`, "
+            "`E1C1`…) y, para la conformación, las localidades y manzanas atendidas."
         )
         plantilla = pd.DataFrame([
             [3, 386, 37, 22, 1, "B", 656, 665],
@@ -171,7 +174,7 @@ if modo.startswith("Generar"):
     dist_num = None if distrito == "Todos" else distrito
     _plantilla()
     archivo = st.file_uploader(
-        "Sube tu conformación PEF 2024 (.xlsx, .xls o .csv)",
+        "Sube tu conformación PEF 2024 o el reporte SUCyMEC 2024 (.xlsx, .xls o .csv)",
         type=["xlsx", "xls", "csv"])
     if archivo is None:
         st.info("Selecciona entidad y distrito, y sube tu conformación PEF 2024 "
@@ -236,7 +239,11 @@ if modo.startswith("Generar"):
 
 col_corte, col_ent, col_dist = st.columns([1.2, 1.5, 1.1])
 with col_corte:
-    corte = st.selectbox("Corte de padrón de referencia:", cortes, index=0)
+    corte = st.selectbox(
+        "Corte de padrón de referencia:", cortes,
+        index=cortes.index(md.CORTE_OFICIAL) if md.CORTE_OFICIAL in cortes else 0,
+        format_func=lambda c: f"{c} (corte oficial)" if c == md.CORTE_OFICIAL else c,
+    )
 with col_ent:
     claves = list(entidades.keys())
     entidad = st.selectbox(
@@ -252,7 +259,9 @@ with col_dist:
     )
 dist_num = None if distrito == "Todos" else distrito
 
-archivo = st.file_uploader("Sube tu proyección (.xlsx, .xls o .csv)", type=["xlsx", "xls", "csv"])
+archivo = st.file_uploader(
+    "Sube tu proyección o el reporte SUCyMEC 2024 (.xlsx, .xls o .csv)",
+    type=["xlsx", "xls", "csv"])
 _plantilla()
 
 if archivo is None:

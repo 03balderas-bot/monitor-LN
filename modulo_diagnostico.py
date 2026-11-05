@@ -151,10 +151,34 @@ def proyectar_referencia(entidad, distrito, corte):
     return df
 
 
+def _sin_simbolos(texto):
+    return re.sub(r"[^a-z0-9]", "", _sin_acentos(texto).lower())
+
+
+def _fila_encabezado(previo):
+    """Fila de encabezado dentro de las primeras filas de un Excel: la que más
+    columnas reconocidas tiene y que incluye 'Sección'."""
+    mejor, n_mejor = None, 0
+    for i, fila in previo.iterrows():
+        claves = {_clave_columna(v) for v in fila.dropna()}
+        claves.discard(None)
+        if "seccion" not in claves:
+            continue
+        if len(claves) > n_mejor:
+            mejor, n_mejor = int(i), len(claves)
+    return mejor
+
+
 def leer_archivo(archivo):
     nombre = getattr(archivo, "name", str(archivo)).lower()
     if nombre.endswith((".xlsx", ".xls")):
-        return pd.read_excel(archivo, sheet_name=0)
+        archivo.seek(0)
+        previo = pd.read_excel(archivo, sheet_name=0, header=None, nrows=12)
+        fila = _fila_encabezado(previo)
+        archivo.seek(0)
+        df = pd.read_excel(archivo, sheet_name=0, header=fila if fila is not None else 0)
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
     if nombre.endswith(".csv"):
         for codificacion in ("utf-8-sig", "latin-1"):
             try:
@@ -173,6 +197,15 @@ def normalizar_archivo(crudo):
         canon = _clave_columna(col)
         if canon and canon not in mapa:
             mapa[canon] = col
+    if "tipo" not in mapa and "cantidad" in mapa:
+        # Reporte SUCyMEC: la columna "Casilla" trae el tipo (B, E#, E#C#).
+        vals = crudo[mapa["cantidad"]].astype(str).str.strip()
+        patron = r"^[BCES]\d*(C\d+)?(\s*,\s*[BCES]\d*(C\d+)?)*$"
+        if vals.str.match(patron).mean() >= 0.6:
+            mapa["tipo"] = mapa.pop("cantidad")
+            avisos.append(
+                "La columna 'Casilla' trae códigos (B, C#, E#, E#C#): se interpreta como "
+                "tipo de casilla.")
     faltan = [c for c in ("seccion", "tipo") if c not in mapa]
     if faltan:
         raise ValueError(
@@ -194,6 +227,13 @@ def normalizar_archivo(crudo):
     df["LN"] = pd.to_numeric(crudo[mapa["ln"]], errors="coerce") if "ln" in mapa else np.nan
     df["PADRON"] = (pd.to_numeric(crudo[mapa["padron"]], errors="coerce")
                     if "padron" in mapa else np.nan)
+
+    # Una celda puede listar varias casillas: "E2, E2C1, E2C2" -> una fila por casilla.
+    if df["TIPO_TEXTO"].str.contains(",", regex=False).any():
+        df["TIPO_TEXTO"] = df["TIPO_TEXTO"].str.split(",")
+        df = df.explode("TIPO_TEXTO")
+        df["TIPO_TEXTO"] = df["TIPO_TEXTO"].str.strip().str.upper()
+        df["TIPO"] = df["TIPO_TEXTO"].str[0]
 
     sin_seccion = int(df["SECCION"].isna().sum())
     if sin_seccion:
@@ -315,7 +355,15 @@ def _texto_contiguas(ord_usu, ord_ref, ord_casillas_ref, ord_casillas_usu):
 
 
 def diagnosticar(crudo, entidad, distrito, corte):
+    es_reporte = _es_reporte(crudo)
+    if es_reporte:
+        crudo = _baseline_2024(entidad, distrito)
     casillas, usu, avisos = normalizar_archivo(crudo)
+    if es_reporte:
+        avisos.append(
+            "El archivo es el reporte SUCyMEC 2024, que solo lista las secciones con "
+            "casillas extraordinarias: los totales 2024 se completan con la referencia "
+            "oficial del ámbito para no subestimar casillas.")
     ref = proyectar_referencia(entidad, distrito, corte)
     matrices = set(ref.loc[ref["es_matriz"], "SECCION"].astype(int))
     nuevas = set(ref.loc[ref["nuevas"], "SECCION"].astype(int))
@@ -445,7 +493,7 @@ def diagnosticar(crudo, entidad, distrito, corte):
         "totales": totales,
         "avisos": avisos,
         "corte": corte_info,
-        "n_ref": int(len(ref)),
+        "n_ref": int((ref["PADRON_ELECTORAL"] > 0).sum()),
         "n_usu": int(len(usu)),
     }
 
@@ -617,6 +665,96 @@ def _locs_txt(locs):
     return txt + ("…" if len(vals) > 15 else "")
 
 
+def _es_reporte(crudo):
+    """Reporte SUCyMEC 2024: trae las localidades y manzanas que atiende cada casilla."""
+    claves = [_sin_simbolos(c) for c in crudo.columns]
+    return any(c.startswith("localidadesaatender") or c.startswith("manzanasaatender")
+               for c in claves)
+
+
+def _columna(crudo, prefijo):
+    for c in crudo.columns:
+        if _sin_simbolos(c).startswith(prefijo):
+            return c
+    return None
+
+
+def _conformacion_reporte(crudo):
+    """Filas (sección, familia, n casillas, localidades/manzanas atendidas e
+    instalación) del reporte SUCyMEC, con el esquema de ref_conformacion."""
+    vacio = pd.DataFrame(columns=["SECCION", "FAMILIA", "N_CAS", "LOCALIDAD", "MANZANAS",
+                                  "INSTALA_LOC", "INSTALA_MZ", "ORDEN"])
+    col_sec = _columna(crudo, "seccion")
+    col_cas = _columna(crudo, "casilla")
+    col_loc = _columna(crudo, "localidadesaatender")
+    col_mz = _columna(crudo, "manzanasaatender")
+    col_inst = _columna(crudo, "localidadymanzana")
+    if col_sec is None or col_cas is None:
+        return vacio
+    df = crudo.assign(SECCION=pd.to_numeric(crudo[col_sec], errors="coerce"))
+    df = df[df["SECCION"].notna()].copy()
+    df["SECCION"] = df["SECCION"].astype(int)
+    filas = []
+    for orden, (_, r) in enumerate(df.iterrows()):
+        cas = str(r[col_cas]).strip()
+        if not cas or cas.lower() == "nan":
+            continue
+        if cas == "B":
+            fams = [("B", 1)]
+        else:
+            codigos = [c.strip() for c in cas.split(",")]
+            fams = [(fa, sum(1 for c in codigos if c.split("C")[0] == fa))
+                    for fa in sorted({c.split("C")[0] for c in codigos})]
+        locs = ([int(m) for m in re.findall(r"^\s*(\d+)\)", str(r[col_loc]), re.M)]
+                if col_loc else [])
+        bloques = {}
+        if col_mz is not None:
+            for m in re.finditer(r"^\s*(\d+)\s*\[([^\]]*)\]", str(r[col_mz]), re.M):
+                bloques[int(m.group(1))] = ",".join(
+                    str(int(x)) for x in re.findall(r"\d+", m.group(2)))
+        inst_loc, inst_mz = None, ""
+        if col_inst is not None:
+            inst = str(r[col_inst])
+            mi = re.search(r"^\s*(\d+)\)", inst)
+            inst_loc = int(mi.group(1)) if mi else None
+            resto = inst[mi.end():].strip() if mi else ""
+            inst_mz = resto if re.fullmatch(r"\d+", resto) else ""
+        for fa, n_cas in fams:
+            for loc in locs:
+                filas.append((r["SECCION"], fa, n_cas, loc, bloques.get(loc, ""),
+                              inst_loc, inst_mz, orden))
+    if not filas:
+        return vacio
+    return pd.DataFrame(filas, columns=list(vacio.columns)).drop_duplicates()
+
+
+def _baseline_2024(entidad, distrito):
+    """Conformación 2024 completa del ámbito según la referencia (una fila por
+    casilla). El reporte SUCyMEC solo lista las secciones con casillas
+    extraordinarias, así que sin esto los totales 2024 quedarían incompletos."""
+    cond = f"CLAVE_ENTIDAD = {int(entidad)}"
+    if distrito is not None:
+        cond += f" AND CLAVE_DISTRITO = {int(distrito)}"
+    con = sqlite3.connect(_db())
+    s = pd.read_sql_query(
+        f"SELECT SECCION, B_HIST, C_HIST, E_HIST, S_HIST, LN_2024 "
+        f"FROM ref_secciones WHERE {cond}", con)
+    con.close()
+    filas = []
+    for r in s.itertuples(index=False):
+        tipos = (["B"] * int(r.B_HIST) + [f"C{i}" for i in range(1, int(r.C_HIST) + 1)]
+                 + [f"E{i}" for i in range(1, int(r.E_HIST) + 1)]
+                 + [f"S{i}" for i in range(1, int(r.S_HIST) + 1)])
+        if not tipos:
+            continue
+        ln = float(r.LN_2024) if pd.notna(r.LN_2024) else 0.0
+        cuota = int(round(ln / len(tipos)))
+        for t in tipos:
+            filas.append({"Sección": int(r.SECCION), "Tipo de Casilla": t,
+                          "Lista Nominal": cuota})
+    return pd.DataFrame(filas)
+
+
 @st.cache_data(show_spinner=False)
 def _secciones_pef2024(entidad):
     con = sqlite3.connect(_db())
@@ -634,15 +772,39 @@ def proyectar_conformacion(crudo, entidad, distrito=None):
     corte oficial; en secciones sin reporte se usa el marcador del estadístico
     y, en su defecto, la proporción de LN del archivo. Reparto equitativo con
     el remanente en la primera casilla del grupo."""
-    casillas, usu, avisos = normalizar_archivo(crudo)
+    casillas, usu, avisos = normalizar_archivo(
+        _baseline_2024(entidad, distrito) if _es_reporte(crudo) else crudo)
     loc_of = _localidades_oficial(entidad, distrito)
     if loc_of.empty:
         raise ValueError(
             f"El corte oficial {CORTE_OFICIAL} aún no está integrado para esta entidad.")
     matrices, nuevas, s_hist, mats_de = _datos_entidad(entidad)
     conf = _conformacion_oficial(entidad)
+    conf_up = _conformacion_reporte(crudo) if _es_reporte(crudo) else None
+    if conf_up is not None and not conf_up.empty:
+        ambito = set(loc_of["SECCION"].astype(int)) | matrices
+        fuera = conf_up[~conf_up["SECCION"].isin(ambito)]
+        conf_up = conf_up[conf_up["SECCION"].isin(ambito)]
+        if not conf_up.empty:
+            secs_up = set(conf_up["SECCION"].astype(int))
+            conf = pd.concat([conf[~conf["SECCION"].isin(secs_up)], conf_up],
+                             ignore_index=True)
+            avisos.append(
+                f"Reporte SUCyMEC 2024: {len(secs_up)} sección(es) con la asignación de "
+                "localidades y manzanas tomada de tu archivo; los totales 2024 se "
+                "completan con la referencia oficial del ámbito.")
+        if not fuera.empty:
+            avisos.append(
+                f"{int(fuera['SECCION'].nunique())} sección(es) del reporte no pertenecen "
+                "al ámbito seleccionado; se omitieron.")
     conf_secs = set(conf["SECCION"].astype(int)) if not conf.empty else set()
     mz_of = _manzanas_oficial(entidad, distrito)
+    if conf_up is not None and not conf_up.empty:
+        mz_ent = _manzanas_oficial(entidad, None)
+        _, fp_ent, _, _, _ = _asignar_familias(mz_ent, conf)
+        universo = {fa: p for fa, p in fp_ent.items() if fa != "B"}
+    else:
+        universo = _universo_familias(entidad)
 
     sec_of = (loc_of.groupby(["CLAVE_DISTRITO", "SECCION"], as_index=False)
               .agg(PADRON=("PADRON", "sum"), LISTA=("LISTA", "sum")))
@@ -701,7 +863,6 @@ def proyectar_conformacion(crudo, entidad, distrito=None):
                 loc_de_fa.setdefault(fa, set()).add(int(r2.LOCALIDAD))
             e_fams = sorted((f for f in fam_p if f != "B"),
                             key=lambda f: orden_fa.get(f, 10**6))
-            universo = _universo_familias(entidad)
             for fa in e_fams:
                 completo = fam_p[fa] >= universo.get(fa, 0)
                 row_g = _row_instala(locs, inst.get(fa))
@@ -868,10 +1029,10 @@ def proyectar_conformacion(crudo, entidad, distrito=None):
 
     en_oficial = set(sec_of["SECCION"].astype(int))
     for sec in sorted(set_usr - en_oficial):
-        if distrito is not None:
-            avisos.append(f"Sección {sec}: fuera del distrito seleccionado; se omite.")
-        elif sec in matrices:
+        if sec in matrices:
             avisos.append(f"Sección {sec}: matriz extinta por reseccionamiento; se excluye.")
+        elif distrito is not None:
+            avisos.append(f"Sección {sec}: fuera del distrito seleccionado; se omite.")
         else:
             avisos.append(f"Sección {sec}: no existe en el corte oficial; se omite.")
     en_pef = _secciones_pef2024(entidad)
